@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme { --font-sans: "DM Sans", Arial, sans-serif; --font-display: "Manrope", Arial, sans-serif; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; background: #100d0c; font-family: "DM Sans", Arial, sans-serif; }
+button, a { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid #ff7c50; outline-offset: 3px; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+@keyframes hero-in { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
+@keyframes reveal-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes float-glow { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(46px, 22px, 0); } }
+@keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.hero-glow { animation: float-glow 10s ease-in-out infinite; }
+.cta-orbit { animation: orbit 20s linear infinite; transform-origin: center; }
+.reveal-up { animation: reveal-up .7s cubic-bezier(.2,.65,.3,1) both; }
+.reveal-on-scroll { animation: reveal-up .75s cubic-bezier(.2,.65,.3,1) both; animation-timeline: view(); animation-range: entry 5% cover 28%; }
+.delay-1 { animation-delay: .08s; }.delay-2 { animation-delay: .16s; }.delay-3 { animation-delay: .24s; }.delay-4 { animation-delay: .32s; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
