@@ -71,7 +71,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState(menuSections[0].id);
   const [cartOpen, setCartOpen] = useState(false);
   const [deliveryType, setDeliveryType] = useState<"retirada" | "entrega">("retirada");
-  const [cutlery, setCutlery] = useState<"hashi" | "garfo" | "nenhum">("hashi");
+  const [cutlery, setCutlery] = useState<"hashi" | "garfo" | "nenhum">("nenhum");
   const [notes, setNotes] = useState("");
   const [location, setLocation] = useState("");
   const [locatingGps, setLocatingGps] = useState(false);
