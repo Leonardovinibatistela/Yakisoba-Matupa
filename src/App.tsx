@@ -28,6 +28,7 @@ const menuSections: MenuSection[] = [
     { id: "medio-carne", name: "Carne", price: 38.9, priceLabel: "R$38,90", image: "cardapio/yaki-carne.jpg" },
   ] },
   { id: "yaki-grande", eyebrow: "Yakisoba Grande (750g)", title: "Mais sabor para compartilhar", items: [
+    { id: "grande-carne", name: "Carne", price: 49.9, priceLabel: "R$49,90", image: "cardapio/yaki-carne.jpg" },
     { id: "grande-porco", name: "Porco", price: 45.9, priceLabel: "R$45,90", image: "cardapio/yaki-porco.jpg" },
     { id: "grande-frango", name: "Frango", price: 41.9, priceLabel: "R$41,90", image: "cardapio/yaki-frango.jpg" },
     { id: "grande-misto", name: "Misto", price: 47.9, priceLabel: "R$47,90", image: "cardapio/yaki-carne.jpg" },
