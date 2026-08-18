@@ -45,7 +45,7 @@ const menuSections: MenuSection[] = [
 
 const addonSections: MenuSection[] = [
   { id: "legumes", eyebrow: "Adicionais de legumes", title: "Mais cor, mais crocância", items: [
-    { id: "brocolis", name: "Brócolis", price: 3, priceLabel: "R$3,00" }, { id: "couve-flor", name: "Couve flor", price: 3, priceLabel: "R$3,00" }, { id: "repolho", name: "Repolho", price: 3, priceLabel: "R$3,00" }, { id: "repolho-roxo", name: "Repolho roxo", price: 3, priceLabel: "R$3,00" }, { id: "pimentao-vermelho", name: "Pimentão vermelho", price: 3, priceLabel: "R$3,00" }, { id: "pimentao-amarelo", name: "Pimentão amarelo", price: 3, priceLabel: "R$3,00" }, { id: "cebola", name: "Cebola", price: 3, priceLabel: "R$3,00" }, { id: "cenoura", name: "Cenoura", price: 3, priceLabel: "R$3,00" },
+    { id: "brocolis", name: "Brócolis", price: 3, priceLabel: "R$3,00" }, { id: "couve-flor", name: "Couve flor", price: 3, priceLabel: "R$3,00" }, { id: "repolho", name: "Repolho", price: 3, priceLabel: "R$3,00" }, { id: "repolho-roxo", name: "Repolho roxo", price: 3, priceLabel: "R$3,00" }, { id: "pimentao-vermelho", name: "Pimentão vermelho", price: 3, priceLabel: "R$3,00" }, { id: "pimentao-amarelo", name: "Pimentão amarelo", price: 3, priceLabel: "R$3,00" }, { id: "cebola", name: "Cebola", price: 3, priceLabel: "R$3,00" }, { id: "cenoura", name: "Cenoura", price: 3, priceLabel: "R$3,00" }, { id: "todos-legumes", name: "Todos", price: 10, priceLabel: "R$10,00" },
   ] },
   { id: "carnes", eyebrow: "Adicionais de carnes", title: "Complete seu pedido", items: [
     { id: "frango-extra", name: "Carne de frango", price: 4, priceLabel: "R$4,00" }, { id: "bovina-extra", name: "Carne bovina", price: 5, priceLabel: "R$5,00" },
