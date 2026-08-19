@@ -1,4 +1,4 @@
-import { collection, getDocs, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { OrderLineItem } from "../orders";
 
@@ -60,6 +60,20 @@ export async function fetchRecentOrders(): Promise<OrderRecord[]> {
   const weekStart = startOfWeek(now);
   const queryStart = weekStart < monthStart ? weekStart : monthStart;
   return fetchOrdersBetween(queryStart, endOfDay(now));
+}
+
+/**
+ * Igual fetchRecentOrders, mas ao vivo: chama onUpdate toda vez que um pedido
+ * novo chega, sem precisar recarregar a página. Retorna a função pra parar de
+ * escutar (chamar quando o componente desmontar).
+ */
+export function subscribeToRecentOrders(onUpdate: (orders: OrderRecord[]) => void, onError: (error: unknown) => void): () => void {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const weekStart = startOfWeek(now);
+  const queryStart = weekStart < monthStart ? weekStart : monthStart;
+  const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", Timestamp.fromDate(queryStart)));
+  return onSnapshot(ordersQuery, (snapshot) => onUpdate(mapSnapshotToOrders(snapshot)), onError);
 }
 
 export function sumRevenue(orders: OrderRecord[]) {

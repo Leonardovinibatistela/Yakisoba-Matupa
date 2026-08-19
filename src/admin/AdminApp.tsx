@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
-import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, fetchRecentOrders, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, sumRevenue, type OrderRecord } from "./adminData";
+import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
 import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
 import { uploadImageToCloudinary } from "../cloudinary";
 
@@ -67,8 +67,9 @@ function Dashboard({ user }: { user: User }) {
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
 
   useEffect(() => {
-    fetchRecentOrders().then(setOrders).catch(() => setError("Não foi possível carregar os pedidos."));
+    const unsubscribe = subscribeToRecentOrders(setOrders, () => setError("Não foi possível carregar os pedidos."));
     loadCarouselImages();
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -79,6 +80,17 @@ function Dashboard({ user }: { user: User }) {
     const dayEnd = endOfDay(picked);
     const monthStart = startOfMonth(picked);
     const monthEnd = endOfMonth(picked);
+    const now = new Date();
+    const isCurrentMonth = picked.getFullYear() === now.getFullYear() && picked.getMonth() === now.getMonth();
+    if (isCurrentMonth && orders) {
+      // Mês atual: os pedidos já estão sendo escutados ao vivo — deriva
+      // direto daí, sem nova busca, então atualiza sozinho quando chega pedido novo.
+      const monthOrders = ordersInRange(orders, monthStart, monthEnd);
+      setPickedMonthOrders(monthOrders);
+      setPickedDayOrders(monthOrders.filter((order) => order.createdAt >= dayStart && order.createdAt < dayEnd));
+      setPickedLoading(false);
+      return;
+    }
     setPickedLoading(true);
     fetchOrdersBetween(monthStart, monthEnd)
       .then((monthOrders) => {
@@ -87,7 +99,7 @@ function Dashboard({ user }: { user: User }) {
       })
       .catch(() => setError("Não foi possível buscar essa data."))
       .finally(() => setPickedLoading(false));
-  }, [pickedDate]);
+  }, [pickedDate, orders]);
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
   if (!orders) return <div className="grid min-h-screen place-items-center bg-[#100d0c] text-white/60">Carregando pedidos…</div>;
