@@ -67,7 +67,7 @@ const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
 const paymentOptions: { id: "pix" | "cartao" | "dinheiro"; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Cartão" }, { id: "dinheiro", label: "Dinheiro" }];
-const PIX_KEY = "CHAVE-PIX-A-DEFINIR"; // TODO: substituir pela chave Pix real do Sooba
+const PIX_KEY = "66992026783";
 
 function PlusIcon({ className = "" }: { className?: string }) { return <svg className={className} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>; }
 function MinusIcon({ className = "" }: { className?: string }) { return <svg className={className} viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>; }
@@ -118,15 +118,11 @@ export default function App() {
   };
   const checkout = () => {
     if (!cartItems.length) return;
-    // Abre a aba já na hora do clique (evita bloqueio de pop-up), e só depois
-    // preenche o link — assim dá tempo do número do pedido vir do Firestore.
-    const whatsappWindow = window.open("", "_blank", "noopener,noreferrer");
     const orderTime = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cutleryLabel = cutleryOptions.find((option) => option.id === cutlery)?.label ?? "Hashi";
     const paymentLabel = paymentOptions.find((option) => option.id === paymentMethod)?.label ?? "Pix";
-    const buildMessage = (orderNumber: number | null) => [
+    const message = [
       "Olá, Sooba! Gostaria de fazer este pedido:",
-      ...(orderNumber ? [`Pedido #${orderNumber}`] : []),
       "",
       ...cartItems.map((item) => `${quantities[item.id]}x ${item.name} - ${formatTotal(item.price * quantities[item.id])}`),
       "",
@@ -141,11 +137,12 @@ export default function App() {
       "",
       "Aguardo a confirmação do pedido. Obrigado!",
     ].join("\n");
-    const openWhatsapp = (orderNumber: number | null) => {
-      const url = `https://wa.me/556692026783?text=${encodeURIComponent(buildMessage(orderNumber))}`;
-      if (whatsappWindow) whatsappWindow.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
-    };
+    // Abre o WhatsApp na hora, direto, sem esperar nada — é o passo mais
+    // importante do site e não pode depender do Firestore responder rápido
+    // (algumas extensões de navegador bloqueiam redirecionamento de aba em
+    // branco, então preferimos abrir já com o link certo desde o início).
+    window.open(`https://wa.me/556692026783?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    // Registra o pedido no painel por trás, sem atrapalhar o WhatsApp caso demore ou falhe.
     const orderPayload: OrderPayload = {
       items: cartItems.map((item) => ({ id: item.id, name: item.name, quantity: quantities[item.id], unitPrice: item.price, lineTotal: item.price * quantities[item.id] })),
       subtotal,
@@ -157,9 +154,7 @@ export default function App() {
       paymentMethod,
       notes: notes.trim(),
     };
-    registerOrder(orderPayload)
-      .then((orderNumber) => openWhatsapp(orderNumber))
-      .catch((error) => { console.error("Não foi possível registrar o pedido no painel:", error); openWhatsapp(null); });
+    registerOrder(orderPayload).catch((error) => console.error("Não foi possível registrar o pedido no painel:", error));
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
