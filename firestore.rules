@@ -20,7 +20,7 @@ service cloud.firestore {
     // painel) pode ler, editar ou apagar — ninguém de fora enxerga os
     // pedidos de outras pessoas.
     match /orders/{orderId} {
-      allow create: if request.resource.data.keys().hasOnly(['items', 'subtotal', 'deliveryFee', 'total', 'deliveryType', 'location', 'cutlery', 'notes', 'orderNumber', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['items', 'subtotal', 'deliveryFee', 'total', 'deliveryType', 'location', 'cutlery', 'paymentMethod', 'notes', 'orderNumber', 'createdAt'])
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.items.size() <= 30
@@ -33,6 +33,7 @@ service cloud.firestore {
         && request.resource.data.total <= 5000
         && request.resource.data.deliveryType in ['retirada', 'entrega']
         && request.resource.data.cutlery in ['hashi', 'garfo', 'nenhum']
+        && request.resource.data.paymentMethod in ['pix', 'cartao', 'dinheiro']
         && request.resource.data.notes is string
         && request.resource.data.notes.size() <= 500
         && request.resource.data.location is string

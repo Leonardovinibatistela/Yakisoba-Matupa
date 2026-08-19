@@ -11,6 +11,7 @@ export type OrderPayload = {
   deliveryType: "retirada" | "entrega";
   location: string;
   cutlery: "hashi" | "garfo" | "nenhum";
+  paymentMethod: "pix" | "cartao" | "dinheiro";
   notes: string;
 };
 
