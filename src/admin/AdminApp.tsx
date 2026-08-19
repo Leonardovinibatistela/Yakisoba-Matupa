@@ -129,6 +129,35 @@ function Dashboard({ user }: { user: User }) {
               </div>
             </div>
           ) : null}
+          {!pickedLoading && pickedDayOrders && pickedDayOrders.length > 0 && (
+            <div className="mt-5">
+              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Pedidos desse dia ({pickedDayOrders.length})</p>
+              <div className="mt-2 max-h-96 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                {[...pickedDayOrders]
+                  .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+                  .map((order) => (
+                    <div key={order.id} className="rounded-lg border border-white/10 bg-[#171211] p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-white">Pedido #{order.orderNumber}</span>
+                        <span className="text-xs text-white/45">{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {order.items.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between text-xs text-white/65">
+                            <span>{item.quantity}x {item.name}</span>
+                            <span>{formatTotal(item.lineTotal)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-sm font-bold text-[#ff875c]">
+                        <span>Total</span>
+                        <span>{formatTotal(order.total)}</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
