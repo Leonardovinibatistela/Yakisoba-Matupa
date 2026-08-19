@@ -223,7 +223,7 @@ function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string,
               {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity(combo.id, next)} label={combo.name} dark /> : <button type="button" onClick={() => setQuantity(combo.id, 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
             </div>
           </div>
-          {combo.image && <img src={combo.image} alt={combo.name} loading="lazy" className="h-48 w-full rounded-2xl object-cover sm:h-56 lg:w-72" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+          {combo.image && <img src={combo.image} alt={combo.name} loading="lazy" className="aspect-square w-full rounded-2xl object-cover sm:w-64 lg:w-72" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
         </div>
         <div className="mt-8 flex items-center justify-between border-t border-white/10 pt-5">
           <button type="button" onClick={() => goTo(index - 1)} aria-label="Combo anterior" className="grid h-9 w-9 place-items-center rounded-full border border-white/15 text-white/70 transition hover:border-white/35 hover:text-white"><ArrowIcon className="h-4 w-4 rotate-180" /></button>
