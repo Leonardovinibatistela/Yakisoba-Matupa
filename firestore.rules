@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Contador de pedidos: qualquer pessoa pode ler o valor atual (necessário
+    // pra transação funcionar), mas só pode incrementar de 1 em 1 — nunca
+    // pular números nem diminuir.
+    match /counters/orders {
+      allow get: if true;
+      allow create: if request.resource.data.current == 1;
+      allow update: if request.resource.data.current == resource.data.current + 1;
+      allow delete: if false;
+    }
+
+    // Pedidos: qualquer cliente pode CRIAR um pedido novo pelo site (checkout
+    // público). Só o admin autenticado (login do painel) pode ler, editar ou
+    // apagar — ninguém de fora enxerga os pedidos de outras pessoas.
+    match /orders/{orderId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // Fotos do carrossel: qualquer visitante do site pode ver (pra aparecer
+    // pro público), mas só o admin autenticado pode adicionar/remover.
+    match /carouselImages/{imageId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Tudo que não foi listado acima continua bloqueado por padrão.
+  }
+}

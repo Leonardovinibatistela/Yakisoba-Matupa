@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { registerOrder, type OrderPayload } from "./orders";
 
 type MenuItem = { id: string; name: string; description?: string; price: number; priceLabel: string; image?: string };
 type MenuSection = { id: string; eyebrow: string; title: string; subtitle?: string; items: MenuItem[] };
@@ -94,10 +95,14 @@ export default function App() {
   };
   const checkout = () => {
     if (!cartItems.length) return;
+    // Abre a aba já na hora do clique (evita bloqueio de pop-up), e só depois
+    // preenche o link — assim dá tempo do número do pedido vir do Firestore.
+    const whatsappWindow = window.open("", "_blank", "noopener,noreferrer");
     const orderTime = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cutleryLabel = cutleryOptions.find((option) => option.id === cutlery)?.label ?? "Hashi";
-    const message = [
+    const buildMessage = (orderNumber: number | null) => [
       "Olá, Sooba! Gostaria de fazer este pedido:",
+      ...(orderNumber ? [`Pedido #${orderNumber}`] : []),
       "",
       ...cartItems.map((item) => `${quantities[item.id]}x ${item.name} - ${formatTotal(item.price * quantities[item.id])}`),
       "",
@@ -111,7 +116,24 @@ export default function App() {
       "",
       "Aguardo a confirmação do pedido e a forma de pagamento. Obrigado!",
     ].join("\n");
-    window.open(`https://wa.me/556692026783?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    const openWhatsapp = (orderNumber: number | null) => {
+      const url = `https://wa.me/556692026783?text=${encodeURIComponent(buildMessage(orderNumber))}`;
+      if (whatsappWindow) whatsappWindow.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+    };
+    const orderPayload: OrderPayload = {
+      items: cartItems.map((item) => ({ id: item.id, name: item.name, quantity: quantities[item.id], unitPrice: item.price, lineTotal: item.price * quantities[item.id] })),
+      subtotal,
+      deliveryFee,
+      total,
+      deliveryType,
+      location,
+      cutlery,
+      notes: notes.trim(),
+    };
+    registerOrder(orderPayload)
+      .then((orderNumber) => openWhatsapp(orderNumber))
+      .catch((error) => { console.error("Não foi possível registrar o pedido no painel:", error); openWhatsapp(null); });
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
