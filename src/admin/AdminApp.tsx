@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
 import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, fetchRecentOrders, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, sumRevenue, type OrderRecord } from "./adminData";
+import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
+import { uploadImageToCloudinary } from "../cloudinary";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const toDateInputValue = (date: Date) => {
@@ -58,9 +60,15 @@ function Dashboard({ user }: { user: User }) {
   const [pickedDayOrders, setPickedDayOrders] = useState<OrderRecord[] | null>(null);
   const [pickedMonthOrders, setPickedMonthOrders] = useState<OrderRecord[] | null>(null);
   const [pickedLoading, setPickedLoading] = useState(false);
+  const [carouselImages, setCarouselImages] = useState<CarouselImage[] | null>(null);
+  const [carouselError, setCarouselError] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
 
   useEffect(() => {
     fetchRecentOrders().then(setOrders).catch(() => setError("Não foi possível carregar os pedidos."));
+    loadCarouselImages();
   }, []);
 
   useEffect(() => {
@@ -95,6 +103,24 @@ function Dashboard({ user }: { user: User }) {
     const [year, month, day] = pickedDate.split("-").map(Number);
     return new Date(year, (month || 1) - 1, day || 1);
   })();
+
+  const handleUploadImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setCarouselError("");
+    setUploading(true);
+    uploadImageToCloudinary(file)
+      .then(({ url, publicId }) => addCarouselImage(url, publicId))
+      .then(loadCarouselImages)
+      .catch(() => setCarouselError("Não foi possível enviar essa foto. Tenta de novo."))
+      .finally(() => setUploading(false));
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setCarouselError("");
+    removeCarouselImage(id).then(loadCarouselImages).catch(() => setCarouselError("Não foi possível remover essa foto."));
+  };
 
   return (
     <div className="min-h-screen bg-[#100d0c] px-5 py-8 text-white sm:px-8">
@@ -176,10 +202,38 @@ function Dashboard({ user }: { user: User }) {
             </div>
           </div>
         </div>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Carrossel do site</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Fotos em destaque para o público</h2>
+          <p className="mt-1.5 text-sm text-white/50">Máximo de {CAROUSEL_MAX_IMAGES} fotos por vez. Pra trocar, remova uma antes de adicionar outra.</p>
+          {carouselError && <p className="mt-3 text-sm text-red-400">{carouselError}</p>}
+          {!carouselImages ? (
+            <p className="mt-4 text-sm text-white/50">Carregando…</p>
+          ) : (
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {carouselImages.map((image) => (
+                <div key={image.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+                  <img src={image.url} alt="Foto do carrossel" className="h-40 w-full object-cover" />
+                  <button type="button" onClick={() => handleRemoveImage(image.id)} className="flex w-full items-center justify-center gap-1.5 border-t border-white/10 py-2.5 text-xs font-bold text-red-400 transition hover:bg-red-500/10">Remover</button>
+                </div>
+              ))}
+              {carouselImages.length < CAROUSEL_MAX_IMAGES && (
+                <label className={`flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 text-sm font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${uploading ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                  <PlusIconAdmin />
+                  {uploading ? "Enviando…" : "Adicionar foto"}
+                  <input type="file" accept="image/*" onChange={handleUploadImage} disabled={uploading} className="hidden" />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+function PlusIconAdmin() { return <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>; }
 
 function PeriodSection({ title, orders, monthLabel }: { title: string; orders: OrderRecord[]; monthLabel?: string }) {
   const revenue = sumRevenue(orders);
