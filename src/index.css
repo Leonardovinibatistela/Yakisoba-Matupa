@@ -16,5 +16,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .cta-orbit { animation: orbit 20s linear infinite; transform-origin: center; }
 .reveal-up { animation: reveal-up .7s cubic-bezier(.2,.65,.3,1) both; }
 .reveal-on-scroll { animation: reveal-up .75s cubic-bezier(.2,.65,.3,1) both; animation-timeline: view(); animation-range: entry 5% cover 28%; }
+/* Navegadores sem suporte a animation-timeline (Firefox, Safari antigo) ficariam
+   com o conteúdo preso invisível — aqui garantimos que ele sempre apareça. */
+@supports not (animation-timeline: view()) { .reveal-on-scroll { animation: none; opacity: 1; transform: none; } }
 .delay-1 { animation-delay: .08s; }.delay-2 { animation-delay: .16s; }.delay-3 { animation-delay: .24s; }.delay-4 { animation-delay: .32s; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
