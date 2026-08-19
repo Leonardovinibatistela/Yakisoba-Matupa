@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { registerOrder, type OrderPayload } from "./orders";
 
 type MenuItem = { id: string; name: string; description?: string; price: number; priceLabel: string; image?: string };
@@ -77,6 +77,17 @@ export default function App() {
   const [notes, setNotes] = useState("");
   const [location, setLocation] = useState("");
   const [locatingGps, setLocatingGps] = useState(false);
+  useEffect(() => {
+    const elements = Array.from(document.querySelectorAll<HTMLElement>(".reveal-on-scroll"));
+    if (!("IntersectionObserver" in window)) { elements.forEach((el) => el.classList.add("is-revealed")); return; }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) { entry.target.classList.add("is-revealed"); observer.unobserve(entry.target); }
+      });
+    }, { threshold: 0.1, rootMargin: "0px 0px -5% 0px" });
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
   const cartItems = useMemo(() => allItems.filter((item) => quantities[item.id] > 0), [quantities]);
   const totalQuantity = cartItems.reduce((total, item) => total + quantities[item.id], 0);
   const subtotal = cartItems.reduce((total, item) => total + item.price * quantities[item.id], 0);
