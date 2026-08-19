@@ -1,7 +1,7 @@
 import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
-export type OrderLineItem = { id: string; name: string; quantity: number; unitPrice: number; lineTotal: number };
+export type OrderLineItem = { id: string; name: string; quantity: number; unitPrice: number; lineTotal: number; parentId?: string };
 
 export type OrderPayload = {
   items: OrderLineItem[];
