@@ -107,7 +107,7 @@ const STORE_HOURS_LABEL = "Seg a Sex 18:30–21h · Sáb e Dom 18:30–23h";
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
 const paymentOptions: { id: "pix" | "cartao" | "dinheiro"; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Cartão" }, { id: "dinheiro", label: "Dinheiro" }];
 const PIX_KEY = "66992026783";
-const STORE_PICKUP_LABEL = "R3JP+G9V Matupá, MT";
+const STORE_PICKUP_LABEL = "Rua 4, nº 916 A – Bairro Cidade Alta, Matupá/MT";
 const STORE_PICKUP_MAPS_URL = "https://www.google.com/maps/search/?api=1&query=-10.168631,-54.914070";
 
 function PlusIcon({ className = "" }: { className?: string }) { return <svg className={className} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>; }
