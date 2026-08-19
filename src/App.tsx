@@ -6,13 +6,13 @@ type MenuItem = { id: string; name: string; description?: string; price: number;
 type MenuSection = { id: string; eyebrow: string; title: string; subtitle?: string; items: MenuItem[] };
 
 const menuSections: MenuSection[] = [
-  { id: "combinados", eyebrow: "Sushi", title: "Combinados", items: [
+  { id: "combinados", eyebrow: "Combinados", title: "Combinados", items: [
     { id: "combo-48", name: "Combinado 48 peças", description: "6 hot roll, 30 sushis sortidos, 4 jou, 8 sashimis", price: 185, priceLabel: "$185", image: "cardapio/combo-48.jpg" },
     { id: "combo-32", name: "Combinado 32 peças", description: "8 hot roll, 20 sushis sortidos, 4 sashimis", price: 145, priceLabel: "$145", image: "cardapio/combo-32.jpg" },
     { id: "combo-28", name: "Combinado 28 peças", description: "8 hot roll, 20 sushis sortidos", price: 89, priceLabel: "$89", image: "cardapio/combo-28.jpg" },
     { id: "combo-57", name: "Combinado especial 57 peças", description: "8 hot roll, 33 sushis sortidos, 4 jou, 4 uniguiri, 8 sashimi, 300g ceviche de tilápia", price: 280, priceLabel: "$280", image: "cardapio/combo-57.png" },
   ] },
-  { id: "porcoes", eyebrow: "Sushi", title: "Porções individuais", items: [
+  { id: "porcoes", eyebrow: "Porções individuais", title: "Porções individuais", items: [
     { id: "hot-roll", name: "Hot Roll Filadélfia (8 unidades)", price: 32.9, priceLabel: "$32,90", image: "cardapio/hot-roll.jpg" },
     { id: "hossomaki", name: "Hossomaki (8 unidades)", price: 30.9, priceLabel: "$30,90", image: "cardapio/hossomaki.jpg" },
     { id: "uramaki-fila", name: "Uramaki Filadélfia (8 unidades)", price: 35.9, priceLabel: "$35,90", image: "cardapio/uramaki-fila.jpg" },
