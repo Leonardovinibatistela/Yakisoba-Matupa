@@ -1,4 +1,4 @@
-import { collection, getDocs, query, Timestamp, where } from "firebase/firestore";
+import { collection, getDocs, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { OrderLineItem } from "../orders";
 
@@ -10,13 +10,19 @@ export type OrderRecord = {
   createdAt: Date;
 };
 
-function startOfDay(date: Date) {
+export function startOfDay(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function startOfWeek(date: Date) {
+export function endOfDay(date: Date) {
+  const d = startOfDay(date);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
+export function startOfWeek(date: Date) {
   const d = startOfDay(date);
   const day = d.getDay(); // 0 = domingo
   const diffToMonday = day === 0 ? 6 : day - 1;
@@ -24,23 +30,36 @@ function startOfWeek(date: Date) {
   return d;
 }
 
-function startOfMonth(date: Date) {
+export function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
 }
 
-export async function fetchRecentOrders(): Promise<OrderRecord[]> {
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const weekStart = startOfWeek(now);
-  const queryStart = weekStart < monthStart ? weekStart : monthStart;
+export function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 1, 0, 0, 0, 0);
+}
 
-  const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", Timestamp.fromDate(queryStart)));
-  const snapshot = await getDocs(ordersQuery);
+function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
     return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, items: data.items ?? [], total: data.total ?? 0, createdAt };
   });
+}
+
+/** Busca pedidos entre duas datas (usado pro "hoje/semana/mês" ao vivo e pra pesquisa de um dia específico). */
+export async function fetchOrdersBetween(from: Date, to: Date): Promise<OrderRecord[]> {
+  const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", Timestamp.fromDate(from)), where("createdAt", "<", Timestamp.fromDate(to)));
+  const snapshot = await getDocs(ordersQuery);
+  return mapSnapshotToOrders(snapshot);
+}
+
+/** Busca tudo desde o início da semana ou do mês (o que vier primeiro) até agora — cobre hoje/semana/mês numa única consulta. */
+export async function fetchRecentOrders(): Promise<OrderRecord[]> {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const weekStart = startOfWeek(now);
+  const queryStart = weekStart < monthStart ? weekStart : monthStart;
+  return fetchOrdersBetween(queryStart, endOfDay(now));
 }
 
 export function sumRevenue(orders: OrderRecord[]) {
@@ -56,23 +75,6 @@ export function bestSellers(orders: OrderRecord[], limit: number) {
     .slice(0, limit);
 }
 
-export function ordersInRange(orders: OrderRecord[], from: Date) {
-  return orders.filter((order) => order.createdAt >= from);
+export function ordersInRange(orders: OrderRecord[], from: Date, to?: Date) {
+  return orders.filter((order) => order.createdAt >= from && (!to || order.createdAt < to));
 }
-
-export function revenueByDay(orders: OrderRecord[], days: number) {
-  const now = new Date();
-  const buckets: { label: string; date: Date; total: number }[] = [];
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const date = startOfDay(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
-    buckets.push({ label: date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""), date, total: 0 });
-  }
-  orders.forEach((order) => {
-    const orderDay = startOfDay(order.createdAt).getTime();
-    const bucket = buckets.find((b) => b.date.getTime() === orderDay);
-    if (bucket) bucket.total += order.total;
-  });
-  return buckets;
-}
-
-export { startOfDay, startOfWeek, startOfMonth };
