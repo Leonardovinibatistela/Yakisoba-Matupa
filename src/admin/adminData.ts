@@ -78,3 +78,12 @@ export function bestSellers(orders: OrderRecord[], limit: number) {
 export function ordersInRange(orders: OrderRecord[], from: Date, to?: Date) {
   return orders.filter((order) => order.createdAt >= from && (!to || order.createdAt < to));
 }
+
+const weekdayLabels = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+/** Soma o faturamento por dia da semana (domingo a sábado, nessa ordem) para o conjunto de pedidos passado. */
+export function revenueByWeekday(orders: OrderRecord[]) {
+  const totals = [0, 0, 0, 0, 0, 0, 0];
+  orders.forEach((order) => { totals[order.createdAt.getDay()] += order.total; });
+  return weekdayLabels.map((label, index) => ({ label, total: totals[index] }));
+}

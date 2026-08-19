@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
-import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, fetchRecentOrders, ordersInRange, startOfDay, startOfMonth, startOfWeek, sumRevenue, type OrderRecord } from "./adminData";
+import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, fetchRecentOrders, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, sumRevenue, type OrderRecord } from "./adminData";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const toDateInputValue = (date: Date) => {
@@ -88,6 +88,8 @@ function Dashboard({ user }: { user: User }) {
   const todayOrders = ordersInRange(orders, startOfDay(now));
   const weekOrders = ordersInRange(orders, startOfWeek(now));
   const monthOrders = ordersInRange(orders, startOfMonth(now));
+  const weekdayChart = revenueByWeekday(weekOrders);
+  const maxWeekdayValue = Math.max(1, ...weekdayChart.map((bucket) => bucket.total));
 
   const pickedDateObj = (() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
@@ -158,6 +160,21 @@ function Dashboard({ user }: { user: User }) {
               </div>
             </div>
           )}
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Semana atual</p>
+            <h3 className="mt-1 text-sm font-bold text-white">Qual dia da semana vendeu mais</h3>
+            <div className="mt-5 flex items-end justify-between gap-2 sm:gap-3" style={{ height: "140px" }}>
+              {weekdayChart.map((bucket) => (
+                <div key={bucket.label} className="flex flex-1 flex-col items-center gap-2">
+                  <div className="flex w-full flex-1 items-end justify-center">
+                    <div className="w-full max-w-9 rounded-t-md bg-[#ff5a19]" style={{ height: `${Math.max(4, (bucket.total / maxWeekdayValue) * 100)}%` }} title={formatTotal(bucket.total)} />
+                  </div>
+                  <span className="text-center text-[9px] font-bold uppercase leading-tight text-white/45">{bucket.label.slice(0, 3)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
