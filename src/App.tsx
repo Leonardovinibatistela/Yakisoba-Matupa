@@ -86,6 +86,7 @@ export default function App() {
   const [cutlery, setCutlery] = useState<"hashi" | "garfo" | "nenhum">("nenhum");
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "cartao" | "dinheiro">("pix");
   const [pixCopied, setPixCopied] = useState(false);
+  const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
   const [location, setLocation] = useState("");
   const [locatingGps, setLocatingGps] = useState(false);
@@ -121,8 +122,9 @@ export default function App() {
     const orderTime = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cutleryLabel = cutleryOptions.find((option) => option.id === cutlery)?.label ?? "Hashi";
     const paymentLabel = paymentOptions.find((option) => option.id === paymentMethod)?.label ?? "Pix";
-    const message = [
+    const buildMessage = (orderNumber: number | null) => [
       "Olá, Sooba! Gostaria de fazer este pedido:",
+      ...(orderNumber ? [`Pedido #${orderNumber}`] : []),
       "",
       ...cartItems.map((item) => `${quantities[item.id]}x ${item.name} - ${formatTotal(item.price * quantities[item.id])}`),
       "",
@@ -137,12 +139,6 @@ export default function App() {
       "",
       "Aguardo a confirmação do pedido. Obrigado!",
     ].join("\n");
-    // Abre o WhatsApp na hora, direto, sem esperar nada — é o passo mais
-    // importante do site e não pode depender do Firestore responder rápido
-    // (algumas extensões de navegador bloqueiam redirecionamento de aba em
-    // branco, então preferimos abrir já com o link certo desde o início).
-    window.open(`https://wa.me/556692026783?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
-    // Registra o pedido no painel por trás, sem atrapalhar o WhatsApp caso demore ou falhe.
     const orderPayload: OrderPayload = {
       items: cartItems.map((item) => ({ id: item.id, name: item.name, quantity: quantities[item.id], unitPrice: item.price, lineTotal: item.price * quantities[item.id] })),
       subtotal,
@@ -154,7 +150,16 @@ export default function App() {
       paymentMethod,
       notes: notes.trim(),
     };
-    registerOrder(orderPayload).catch((error) => console.error("Não foi possível registrar o pedido no painel:", error));
+    // Espera até 2,5s pelo número do pedido (pra cozinha ver a ordem certa na
+    // mensagem) — mas nunca mais que isso: se o Firestore demorar ou falhar,
+    // abre o WhatsApp sem o número mesmo assim. Só faz UM window.open, direto
+    // pro link final (sem aba em branco + redirecionamento, que era o que
+    // travava em algumas extensões de navegador).
+    const withTimeout = new Promise<number | null>((resolve) => setTimeout(() => resolve(null), 2500));
+    Promise.race([registerOrder(orderPayload).catch(() => null), withTimeout]).then((orderNumber) => {
+      window.open(`https://wa.me/556692026783?text=${encodeURIComponent(buildMessage(orderNumber))}`, "_blank", "noopener,noreferrer");
+      if (orderNumber !== null) { setConfirmedOrderNumber(orderNumber); setTimeout(() => setConfirmedOrderNumber(null), 10000); }
+    });
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
@@ -173,6 +178,7 @@ export default function App() {
     <footer className="bg-[#100d0c] py-12 text-white/60"><div className="mx-auto flex max-w-7xl flex-col gap-10 px-5 lg:px-8"><div className="flex flex-col justify-between gap-8 sm:flex-row sm:items-end"><Logo /><div className="flex flex-col gap-1.5 text-sm sm:text-right"><a href="tel:+556692026783" className="font-semibold text-white transition hover:text-[#ff7c50]">(66) 9202-6783</a><a href="https://www.instagram.com/sooba.yakisoba" target="_blank" rel="noreferrer" className="transition hover:text-[#ff7c50]">Instagram @sooba.yakisoba</a></div></div><div className="flex flex-col justify-between gap-3 border-t border-white/10 pt-5 text-xs sm:flex-row"><p>Sooba Yakisoba Delivery</p><a href="#inicio" className="transition hover:text-white">Voltar ao topo</a></div></div></footer>
     <button type="button" onClick={() => setCartOpen(true)} className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-between rounded-2xl bg-[#1d1714] px-4 py-3.5 text-white shadow-[0_15px_35px_rgba(0,0,0,.35)] ring-1 ring-white/10 lg:hidden" aria-label="Abrir meu pedido"><span className="flex items-center gap-2.5"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff5a19]"><CartIcon className="h-4 w-4" /></span><span className="text-left"><span className="block text-xs font-bold">Meu Pedido</span><span className="block text-[11px] text-white/55">{totalQuantity ? `${totalQuantity} ${totalQuantity === 1 ? "item" : "itens"} selecionado${totalQuantity === 1 ? "" : "s"}` : "Nenhum item selecionado"}</span></span></span><span className="font-display text-lg font-extrabold tracking-[-.04em] text-[#ff875c]">{formatTotal(subtotal)}</span></button>
     {cartOpen && <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Meu Pedido" onMouseDown={() => setCartOpen(false)}><div className="flex h-full w-full max-w-md flex-col bg-[#1a1513] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b border-white/10 px-5 py-5"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Sooba</p><h2 className="mt-1 font-display text-2xl font-extrabold tracking-[-.05em] text-white">Meu Pedido</h2></div><button type="button" onClick={() => setCartOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-white/15 text-white/70 transition hover:border-white/35 hover:text-white" aria-label="Fechar pedido"><span className="text-xl leading-none">×</span></button></div><div className="min-h-0 flex-1 overflow-y-auto px-5 py-5"><CartSummary cartItems={cartItems} quantities={quantities} subtotal={subtotal} total={total} onQuantityChange={setQuantity} onCheckout={checkout} compact deliveryType={deliveryType} setDeliveryType={setDeliveryType} deliveryFee={deliveryFee} cutlery={cutlery} setCutlery={setCutlery} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} pixCopied={pixCopied} setPixCopied={setPixCopied} notes={notes} setNotes={setNotes} location={location} setLocation={setLocation} requestLocation={requestLocation} locatingGps={locatingGps} /></div></div></div>}
+    {confirmedOrderNumber !== null && <div className="fixed inset-x-3 top-3 z-[60] mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-[#ff5a19]/40 bg-[#1a1513] px-4 py-3.5 shadow-[0_12px_35px_rgba(0,0,0,.4)] sm:left-1/2 sm:right-auto sm:-translate-x-1/2" role="status"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#ff5a19] font-display text-sm font-extrabold text-white">#{confirmedOrderNumber}</span><div><p className="text-sm font-bold text-white">Pedido #{confirmedOrderNumber} confirmado!</p><p className="text-xs text-white/55">Guarde esse número — ele também aparece no painel do Sooba.</p></div><button type="button" onClick={() => setConfirmedOrderNumber(null)} aria-label="Fechar aviso" className="ml-auto shrink-0 text-white/50 transition hover:text-white">×</button></div>}
   </div>;
 }
 
