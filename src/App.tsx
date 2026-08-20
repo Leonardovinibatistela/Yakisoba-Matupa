@@ -173,9 +173,8 @@ export default function App() {
       `${quantities[parent.id]}x ${parent.name} - ${formatTotal(parent.price * quantities[parent.id])}`,
       ...addons.map((addon) => `   + ${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`),
     ]).concat(orphanAddons.map((addon) => `${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`));
-    const buildMessage = (orderNumber: number | null) => [
+    const buildMessage = () => [
       "Olá, Sooba! Gostaria de fazer este pedido:",
-      ...(orderNumber ? [`Pedido #${orderNumber}`] : []),
       "",
       ...itemLines,
       "",
@@ -202,16 +201,16 @@ export default function App() {
       paymentMethod,
       notes: notes.trim(),
     };
-    // Espera até 2,5s pelo número do pedido (pra cozinha ver a ordem certa na
-    // mensagem) — mas nunca mais que isso: se o Firestore demorar ou falhar,
-    // abre o WhatsApp sem o número mesmo assim. Só faz UM window.open, direto
-    // pro link final (sem aba em branco + redirecionamento, que era o que
-    // travava em algumas extensões de navegador).
-    const withTimeout = new Promise<number | null>((resolve) => setTimeout(() => resolve(null), 2500));
-    Promise.race([registerOrder(orderPayload).catch(() => null), withTimeout]).then((orderNumber) => {
-      window.open(`https://wa.me/556692026783?text=${encodeURIComponent(buildMessage(orderNumber))}`, "_blank", "noopener,noreferrer");
-      if (orderNumber !== null) { setConfirmedOrderNumber(orderNumber); setTimeout(() => setConfirmedOrderNumber(null), 10000); }
-    });
+    // Abre o WhatsApp IMEDIATAMENTE e de forma síncrona, no mesmo instante do
+    // clique — é a única forma realmente confiável de não ser bloqueado por
+    // extensões/navegadores (qualquer espera, mesmo de poucos segundos, já é
+    // suficiente pra alguns bloqueadores recusarem abrir a aba). O registro no
+    // Firestore roda em segundo plano, sem atrasar a abertura.
+    window.open(`https://wa.me/556692026783?text=${encodeURIComponent(buildMessage())}`, "_blank", "noopener,noreferrer");
+    registerOrder(orderPayload).then((orderNumber) => {
+      setConfirmedOrderNumber(orderNumber);
+      setTimeout(() => setConfirmedOrderNumber(null), 10000);
+    }).catch(() => {});
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
