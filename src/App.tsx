@@ -128,6 +128,7 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "cartao" | "dinheiro">("pix");
   const [pixCopied, setPixCopied] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [storeOpen, setStoreOpen] = useState(() => isStoreOpen());
   useEffect(() => {
     const interval = setInterval(() => setStoreOpen(isStoreOpen()), 30000);
@@ -164,7 +165,8 @@ export default function App() {
     );
   };
   const checkout = () => {
-    if (!cartItems.length || !storeOpen) return;
+    if (!cartItems.length || !storeOpen || isSubmitting) return;
+    setIsSubmitting(true);
     const orderTime = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cutleryLabel = cutleryOptions.find((option) => option.id === cutlery)?.label ?? "Hashi";
     const paymentLabel = paymentOptions.find((option) => option.id === paymentMethod)?.label ?? "Pix";
@@ -207,6 +209,11 @@ export default function App() {
     // suficiente pra alguns bloqueadores recusarem abrir a aba). O registro no
     // Firestore roda em segundo plano, sem atrasar a abertura.
     window.open(`https://wa.me/556692026783?text=${encodeURIComponent(buildMessage())}`, "_blank", "noopener,noreferrer");
+    // Esvazia o carrinho na hora — além de ser o comportamento certo depois de
+    // um pedido concluído, também evita que um clique duplo (ou o cliente
+    // clicando de novo achando que não funcionou) crie um segundo pedido.
+    setQuantities({});
+    setIsSubmitting(false);
     registerOrder(orderPayload).then((orderNumber) => {
       setConfirmedOrderNumber(orderNumber);
       setTimeout(() => setConfirmedOrderNumber(null), 10000);
