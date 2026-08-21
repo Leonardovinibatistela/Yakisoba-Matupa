@@ -19,7 +19,6 @@ const menuSections: MenuSection[] = [
     { id: "uramaki-grelhado", name: "Uramaki Grelhado (8 unidades)", price: 35.9, priceLabel: "$35,90", image: "cardapio/uramaki-grelhado.jpg" },
     { id: "uramaki-skin", name: "Uramaki Skin (8 unidades)", price: 32.9, priceLabel: "$32,90", image: "cardapio/uramaki-skin.jpg" },
     { id: "sashimi-salmao", name: "Sashimi Salmão (5 unidades)", price: 45.9, priceLabel: "$45,90", image: "cardapio/sashimi-salmao.jpg" },
-    { id: "ceviche", name: "Ceviche Tilápia (300g)", price: 53.9, priceLabel: "$53,90", image: "cardapio/ceviche.jpg" },
     { id: "sushi-dog", name: "Sushi Dog (120g de salmão cru)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog.jpg" },
     { id: "sushi-dog-grelhado", name: "Sushi Dog Salmão Grelhado (120g de salmão grelhado)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog-grelhado.jpg" },
   ] },
