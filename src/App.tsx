@@ -43,6 +43,11 @@ const menuSections: MenuSection[] = [
     { id: "proteico-misto-g", name: "Misto (G)", price: 37.9, priceLabel: "R$37,90", image: "cardapio/proteico-misto.jpg" },
     { id: "proteico-misto-m", name: "Misto (M)", price: 27.9, priceLabel: "R$27,90", image: "cardapio/proteico-misto.jpg" },
   ] },
+  { id: "bebidas", eyebrow: "Bebidas", title: "Pra acompanhar", items: [
+    { id: "coca-lata", name: "Coca-Cola lata", price: 5, priceLabel: "R$5,00", image: "cardapio/coca-lata.jpg" },
+    { id: "agua-com-gas", name: "Água com gás", price: 5, priceLabel: "R$5,00", image: "cardapio/agua-com-gas.jpg" },
+    { id: "coca-1-5", name: "Coca-Cola 1,5L", price: 12, priceLabel: "R$12,00", image: "cardapio/coca-1-5.jpg" },
+  ] },
 ];
 
 const addonSections: MenuSection[] = [
