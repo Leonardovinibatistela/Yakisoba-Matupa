@@ -23,13 +23,19 @@ const ordersCollectionRef = collection(db, "orders");
  * atômica no contador), pra que a loja consiga ordenar pedidos que chegaram
  * juntos no WhatsApp. Se der qualquer erro (ex.: sem internet), não trava o
  * checkout — quem chama trata a falha e segue mandando pro WhatsApp mesmo assim.
+ *
+ * O número reinicia em 1 todo dia (compara a data guardada no contador com a
+ * data de hoje no fuso do cliente — é a mesma base que já usamos pra saber se
+ * a loja está aberta).
  */
 export async function registerOrder(payload: OrderPayload): Promise<number> {
+  const today = new Date().toLocaleDateString("en-CA");
   const orderNumber = await runTransaction(db, async (transaction) => {
     const counterSnap = await transaction.get(countersRef);
-    const current = counterSnap.exists() ? (counterSnap.data().current as number) : 0;
-    const next = current + 1;
-    transaction.set(countersRef, { current: next });
+    const data = counterSnap.exists() ? counterSnap.data() : null;
+    const isSameDay = data?.date === today;
+    const next = isSameDay ? ((data?.current as number) ?? 0) + 1 : 1;
+    transaction.set(countersRef, { current: next, date: today });
     const newOrderRef = doc(ordersCollectionRef);
     transaction.set(newOrderRef, { ...payload, orderNumber: next, createdAt: serverTimestamp() });
     return next;
