@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
-import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
+import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
 import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
 import { uploadImageToCloudinary } from "../cloudinary";
 
@@ -93,6 +93,12 @@ function Dashboard({ user }: { user: User }) {
   const toggleOrderListFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen();
     else orderListRef.current?.requestFullscreen();
+  };
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const handleDeleteOrder = (order: OrderRecord) => {
+    if (!window.confirm(`Apagar o Pedido #${order.orderNumber}? Essa ação não pode ser desfeita.`)) return;
+    setDeletingOrderId(order.id);
+    deleteOrder(order.id).catch(() => window.alert("Não foi possível apagar esse pedido. Tenta de novo.")).finally(() => setDeletingOrderId(null));
   };
 
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
@@ -222,7 +228,12 @@ function Dashboard({ user }: { user: User }) {
                               Pedido #{order.orderNumber}
                               {isSuspect && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">⚠️ Possível duplicado</span>}
                             </span>
-                            <span className={`text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className={`text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                              <button type="button" onClick={() => handleDeleteOrder(order)} disabled={deletingOrderId === order.id} aria-label={`Apagar Pedido #${order.orderNumber}`} className="rounded-full border border-red-400/30 px-2 py-1 text-[10px] font-bold text-red-300 transition hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-wait disabled:opacity-50">
+                                {deletingOrderId === order.id ? "Apagando…" : "🗑 Apagar"}
+                              </button>
+                            </div>
                           </div>
                           <div className="mt-2 space-y-1">
                             {order.items.map((item) => (

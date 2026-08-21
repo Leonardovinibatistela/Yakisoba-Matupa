@@ -1,4 +1,4 @@
-import { collection, getDocs, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { OrderLineItem } from "../orders";
 
@@ -96,6 +96,11 @@ export function bestSellers(orders: OrderRecord[], limit: number) {
     .map(([name, quantity]) => ({ name, quantity }))
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, limit);
+}
+
+/** Apaga um pedido (ex.: duplicado por engano) — só o admin autenticado pode. */
+export function deleteOrder(id: string): Promise<void> {
+  return deleteDoc(doc(db, "orders", id));
 }
 
 export function ordersInRange(orders: OrderRecord[], from: Date, to?: Date) {
