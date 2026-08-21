@@ -101,7 +101,6 @@ const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
 // Horário de funcionamento: seg-sex 18:30-21h, sáb-dom 18:30-23h.
 function isStoreOpen(date = new Date()) {
-  return true; // TESTE TEMPORÁRIO — remover essa linha depois do teste de checkout
   const day = date.getDay(); // 0 = domingo ... 6 = sábado
   const minutesNow = date.getHours() * 60 + date.getMinutes();
   const openMinutes = 18 * 60 + 30;
@@ -223,7 +222,7 @@ export default function App() {
     registerOrder(orderPayload).then((orderNumber) => {
       setConfirmedOrderNumber(orderNumber);
       setTimeout(() => setConfirmedOrderNumber(null), 10000);
-    }).catch((err) => { console.error("registerOrder falhou (DEBUG TEMP):", err); });
+    }).catch(() => {});
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
