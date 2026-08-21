@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
 import { bestSellers, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
@@ -6,6 +6,26 @@ import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarou
 import { uploadImageToCloudinary } from "../cloudinary";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+// Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
+// feitos poucos minutos um do outro, provavelmente são o mesmo cliente
+// tentando de novo (ex.: internet fraca), não dois pedidos diferentes.
+const orderSignature = (order: OrderRecord) => order.items.map((item) => `${item.id}:${item.quantity}`).sort().join("|") + `#${order.total}`;
+const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
+function findDuplicateSuspects(orders: OrderRecord[]): Set<string> {
+  const suspects = new Set<string>();
+  for (let i = 0; i < orders.length; i++) {
+    for (let j = i + 1; j < orders.length; j++) {
+      const a = orders[i];
+      const b = orders[j];
+      if (orderSignature(a) === orderSignature(b) && Math.abs(a.createdAt.getTime() - b.createdAt.getTime()) <= DUPLICATE_WINDOW_MS) {
+        suspects.add(a.id);
+        suspects.add(b.id);
+      }
+    }
+  }
+  return suspects;
+}
 const toDateInputValue = (date: Date) => {
   const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return d.toISOString().slice(0, 10);
@@ -63,6 +83,17 @@ function Dashboard({ user }: { user: User }) {
   const [carouselImages, setCarouselImages] = useState<CarouselImage[] | null>(null);
   const [carouselError, setCarouselError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const orderListRef = useRef<HTMLDivElement>(null);
+  const [isOrderListFullscreen, setIsOrderListFullscreen] = useState(false);
+  useEffect(() => {
+    const handler = () => setIsOrderListFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+  const toggleOrderListFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else orderListRef.current?.requestFullscreen();
+  };
 
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
 
@@ -169,35 +200,50 @@ function Dashboard({ user }: { user: User }) {
               </div>
             </div>
           ) : null}
-          {!pickedLoading && pickedDayOrders && pickedDayOrders.length > 0 && (
-            <div className="mt-5">
-              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Pedidos desse dia ({pickedDayOrders.length})</p>
-              <div className="mt-2 max-h-96 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                {[...pickedDayOrders]
-                  .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-                  .map((order) => (
-                    <div key={order.id} className="rounded-lg border border-white/10 bg-[#171211] p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-white">Pedido #{order.orderNumber}</span>
-                        <span className="text-xs text-white/45">{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
-                      <div className="mt-2 space-y-1">
-                        {order.items.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between text-xs text-white/65">
-                            <span>{item.quantity}x {item.name}</span>
-                            <span>{formatTotal(item.lineTotal)}</span>
+          {!pickedLoading && pickedDayOrders && pickedDayOrders.length > 0 && (() => {
+            const duplicateSuspects = findDuplicateSuspects(pickedDayOrders);
+            return (
+              <div ref={orderListRef} className={isOrderListFullscreen ? "mt-5 bg-[#100d0c] p-6" : "mt-5"}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className={`font-bold uppercase tracking-[.14em] text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-[10px]"}`}>Pedidos desse dia ({pickedDayOrders.length})</p>
+                  <button type="button" onClick={toggleOrderListFullscreen} className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white">
+                    {isOrderListFullscreen ? "✕ Sair da tela cheia" : "⛶ Tela cheia"}
+                  </button>
+                </div>
+                <div className={`mt-2 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-3 ${isOrderListFullscreen ? "max-h-[calc(100vh-110px)]" : "max-h-96"}`}>
+                  {[...pickedDayOrders]
+                    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+                    .map((order) => {
+                      const isSuspect = duplicateSuspects.has(order.id);
+                      return (
+                        <div key={order.id} className={`rounded-lg border p-3 ${isSuspect ? "border-amber-400/50 bg-amber-400/[0.06]" : "border-white/10 bg-[#171211]"}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`flex items-center gap-2 font-bold text-white ${isOrderListFullscreen ? "text-lg" : "text-sm"}`}>
+                              Pedido #{order.orderNumber}
+                              {isSuspect && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">⚠️ Possível duplicado</span>}
+                            </span>
+                            <span className={`text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                           </div>
-                        ))}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-sm font-bold text-[#ff875c]">
-                        <span>Total</span>
-                        <span>{formatTotal(order.total)}</span>
-                      </div>
-                    </div>
-                  ))}
+                          <div className="mt-2 space-y-1">
+                            {order.items.map((item) => (
+                              <div key={item.id} className={`flex items-center justify-between text-white/65 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>
+                                <span>{item.quantity}x {item.name}</span>
+                                <span>{formatTotal(item.lineTotal)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className={`mt-2 flex items-center justify-between border-t border-white/10 pt-2 font-bold text-[#ff875c] ${isOrderListFullscreen ? "text-base" : "text-sm"}`}>
+                            <span>Total</span>
+                            <span>{formatTotal(order.total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+                {duplicateSuspects.size > 0 && <p className="mt-2 text-[11px] leading-relaxed text-amber-300/80">⚠️ Os pedidos marcados têm os mesmos itens e foram feitos com poucos minutos de diferença — confirme com o cliente pelo WhatsApp antes de preparar os dois, pode ser o mesmo pedido tentado de novo.</p>}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="mt-6 border-t border-white/10 pt-5">
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Semana atual</p>
