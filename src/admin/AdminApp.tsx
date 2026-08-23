@@ -295,6 +295,7 @@ function Dashboard({ user }: { user: User }) {
                               </button>
                             </div>
                           </div>
+                          {(order.customerName || order.customerPhone) && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>👤 {order.customerName}{order.customerName && order.customerPhone ? " · " : ""}{order.customerPhone}</p>}
                           <div className="mt-2 space-y-1">
                             {order.items.map((item) => (
                               <div key={item.id} className={`flex items-center justify-between text-white/65 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>

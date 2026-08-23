@@ -23,7 +23,13 @@ service cloud.firestore {
     // painel) pode ler, editar ou apagar — ninguém de fora enxerga os
     // pedidos de outras pessoas.
     match /orders/{orderId} {
-      allow create: if request.resource.data.keys().hasOnly(['items', 'subtotal', 'deliveryFee', 'total', 'deliveryType', 'location', 'cutlery', 'paymentMethod', 'notes', 'orderNumber', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['customerName', 'customerPhone', 'items', 'subtotal', 'deliveryFee', 'total', 'deliveryType', 'location', 'cutlery', 'paymentMethod', 'notes', 'orderNumber', 'createdAt'])
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0
+        && request.resource.data.customerName.size() <= 100
+        && request.resource.data.customerPhone is string
+        && request.resource.data.customerPhone.size() > 0
+        && request.resource.data.customerPhone.size() <= 30
         && request.resource.data.items is list
         && request.resource.data.items.size() > 0
         && request.resource.data.items.size() <= 30

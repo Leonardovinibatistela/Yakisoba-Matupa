@@ -4,6 +4,8 @@ import { db } from "./firebase";
 export type OrderLineItem = { id: string; name: string; quantity: number; unitPrice: number; lineTotal: number; parentId?: string };
 
 export type OrderPayload = {
+  customerName: string;
+  customerPhone: string;
   items: OrderLineItem[];
   subtotal: number;
   deliveryFee: number;

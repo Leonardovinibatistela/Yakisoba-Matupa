@@ -5,6 +5,8 @@ import type { OrderLineItem } from "../orders";
 export type OrderRecord = {
   id: string;
   orderNumber: number;
+  customerName: string;
+  customerPhone: string;
   items: OrderLineItem[];
   total: number;
   createdAt: Date;
@@ -42,7 +44,7 @@ function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
-    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, items: data.items ?? [], total: data.total ?? 0, createdAt };
+    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, createdAt };
   });
 }
 
