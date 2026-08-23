@@ -8,8 +8,10 @@ import { menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
+import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 21h · Sáb e Dom 23h";
 
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
 // do MESMO telefone, feitos poucos minutos um do outro, provavelmente são o
@@ -116,6 +118,15 @@ function Dashboard({ user }: { user: User }) {
     if (next && !window.confirm("Pausar pedidos agora? O site continua de pé, mas ninguém consegue finalizar pedido até você reativar.")) return;
     setTogglingPause(true);
     setEmergencyPause(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingPause(false));
+  };
+
+  const [manualOpen, setManualOpenState] = useState(false);
+  const [togglingManualOpen, setTogglingManualOpen] = useState(false);
+  useEffect(() => subscribeManualOpen(setManualOpenState), []);
+  const handleToggleManualOpen = () => {
+    const next = !manualOpen;
+    setTogglingManualOpen(true);
+    setManualOpen(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualOpen(false));
   };
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
@@ -242,6 +253,16 @@ function Dashboard({ user }: { user: User }) {
           </div>
           <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "bg-white text-red-600 hover:bg-white/90" : "bg-red-500/90 text-white hover:bg-red-500"}`}>
             {togglingPause ? "…" : emergencyPaused ? "Reativar pedidos" : "Pausar pedidos"}
+          </button>
+        </div>
+
+        <div className={`mt-3 flex items-center justify-between gap-4 rounded-2xl border p-5 ${manualOpen ? "border-emerald-400/50 bg-emerald-500/10" : "border-white/10 bg-[#171211]"}`}>
+          <div>
+            <p className={`text-sm font-bold ${manualOpen ? "text-emerald-300" : "text-white"}`}>{manualOpen ? "🟢 Abertura antecipada ativada" : "Aberto só no horário normal"}</p>
+            <p className="mt-0.5 text-xs text-white/50">Quer começar mais cedo ou tem evento na cidade? Abre o site pra pedido a qualquer hora. Não se preocupa em desligar — o site sempre fecha sozinho no horário oficial ({STORE_HOURS_LABEL_ADMIN}).</p>
+          </div>
+          <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "bg-white text-emerald-700 hover:bg-white/90" : "bg-emerald-500/90 text-white hover:bg-emerald-500"}`}>
+            {togglingManualOpen ? "…" : manualOpen ? "Desligar abertura antecipada" : "Abrir agora"}
           </button>
         </div>
 

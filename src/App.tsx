@@ -5,6 +5,7 @@ import { addonSections, comboOffers, menuSections, type MenuItem } from "./menuD
 import { subscribeSoldOutItems } from "./soldOut";
 import { subscribePriceOverrides } from "./priceOverrides";
 import { subscribeEmergencyPause } from "./emergencyPause";
+import { subscribeManualOpen } from "./manualOpen";
 
 const allItems = [...menuSections, ...addonSections].flatMap((section) => section.items).concat(comboOffers);
 const allItemsById = new Map(allItems.map((item) => [item.id, item]));
@@ -46,14 +47,23 @@ const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "c
 const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
 // Horário de funcionamento: seg-sex 18:30-21h, sáb-dom 18:30-23h.
-function isStoreOpen(date = new Date()) {
-  return true; // TEMP: teste de pedidos fora do horário — reverter depois
+function scheduleMinutes(date: Date) {
   const day = date.getDay(); // 0 = domingo ... 6 = sábado
-  const minutesNow = date.getHours() * 60 + date.getMinutes();
-  const openMinutes = 18 * 60 + 30;
   const isWeekend = day === 0 || day === 6;
-  const closeMinutes = isWeekend ? 23 * 60 : 21 * 60;
+  return { openMinutes: 18 * 60 + 30, closeMinutes: isWeekend ? 23 * 60 : 21 * 60 };
+}
+function isStoreOpen(date = new Date()) {
+  const { openMinutes, closeMinutes } = scheduleMinutes(date);
+  const minutesNow = date.getHours() * 60 + date.getMinutes();
   return minutesNow >= openMinutes && minutesNow < closeMinutes;
+}
+// Usado pela abertura antecipada (botão do admin): mesmo com o site aberto
+// na marra fora do horário, nunca deixa passar do horário oficial de
+// fechar — assim o Sooba não corre risco de ficar "aberto" a noite toda
+// se o admin esquecer de desligar o botão.
+function isBeforeClosingTime(date = new Date()) {
+  const minutesNow = date.getHours() * 60 + date.getMinutes();
+  return minutesNow < scheduleMinutes(date).closeMinutes;
 }
 const STORE_HOURS_LABEL = "Seg a Sex 18:30–21h · Sáb e Dom 18:30–23h";
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
@@ -87,11 +97,16 @@ export default function App() {
   useEffect(() => subscribePriceOverrides(setPriceOverrides), []);
   const [emergencyPaused, setEmergencyPaused] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
-  const [storeOpen, setStoreOpen] = useState(() => isStoreOpen());
+  const [manualOpen, setManualOpen] = useState(false);
+  useEffect(() => subscribeManualOpen(setManualOpen), []);
+  const [scheduleState, setScheduleState] = useState(() => ({ open: isStoreOpen(), beforeClosing: isBeforeClosingTime() }));
   useEffect(() => {
-    const interval = setInterval(() => setStoreOpen(isStoreOpen()), 30000);
+    const interval = setInterval(() => setScheduleState({ open: isStoreOpen(), beforeClosing: isBeforeClosingTime() }), 30000);
     return () => clearInterval(interval);
   }, []);
+  // Abertura antecipada nunca vale depois do horário oficial de fechar —
+  // assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
+  const storeOpen = scheduleState.open || (manualOpen && scheduleState.beforeClosing);
   const [notes, setNotes] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
