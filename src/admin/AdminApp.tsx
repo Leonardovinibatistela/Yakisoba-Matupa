@@ -4,6 +4,8 @@ import { auth } from "../firebase";
 import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
 import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
 import { uploadImageToCloudinary } from "../cloudinary";
+import { menuSections } from "../menuData";
+import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -99,6 +101,14 @@ function Dashboard({ user }: { user: User }) {
     if (!window.confirm(`Apagar o Pedido #${order.orderNumber}? Essa ação não pode ser desfeita.`)) return;
     setDeletingOrderId(order.id);
     deleteOrder(order.id).catch(() => window.alert("Não foi possível apagar esse pedido. Tenta de novo.")).finally(() => setDeletingOrderId(null));
+  };
+
+  const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
+  const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
+  useEffect(() => subscribeSoldOutItems(setSoldOutIds), []);
+  const handleToggleSoldOut = (itemId: string, currentlySoldOut: boolean) => {
+    setTogglingItemId(itemId);
+    setItemSoldOut(itemId, !currentlySoldOut).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingItemId(null));
   };
 
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
@@ -296,6 +306,33 @@ function Dashboard({ user }: { user: User }) {
               )}
             </div>
           )}
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Marcar itens como esgotados</h2>
+          <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca aqui que o item some do "Adicionar ao pedido" no site na hora, sem precisar mexer no código.</p>
+          <div className="mt-5 space-y-6">
+            {menuSections.map((section) => (
+              <div key={section.id}>
+                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
+                  {section.items.map((item) => {
+                    const isSoldOut = soldOutIds.has(item.id);
+                    const isToggling = togglingItemId === item.id;
+                    return (
+                      <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                        <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
+                        <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
+                          {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
