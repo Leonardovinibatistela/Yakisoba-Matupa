@@ -7,6 +7,7 @@ import { uploadImageToCloudinary } from "../cloudinary";
 import { menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
+import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -104,12 +105,30 @@ function Dashboard({ user }: { user: User }) {
     deleteOrder(order.id).catch(() => window.alert("Não foi possível apagar esse pedido. Tenta de novo.")).finally(() => setDeletingOrderId(null));
   };
 
+  const [emergencyPaused, setEmergencyPausedState] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
+  useEffect(() => subscribeEmergencyPause(setEmergencyPausedState), []);
+  const handleToggleEmergencyPause = () => {
+    const next = !emergencyPaused;
+    if (next && !window.confirm("Pausar pedidos agora? O site continua de pé, mas ninguém consegue finalizar pedido até você reativar.")) return;
+    setTogglingPause(true);
+    setEmergencyPause(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingPause(false));
+  };
+
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   useEffect(() => subscribeSoldOutItems(setSoldOutIds), []);
   const handleToggleSoldOut = (itemId: string, currentlySoldOut: boolean) => {
     setTogglingItemId(itemId);
     setItemSoldOut(itemId, !currentlySoldOut).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingItemId(null));
+  };
+
+  const [togglingSectionId, setTogglingSectionId] = useState<string | null>(null);
+  const handleToggleSection = (sectionId: string, itemIds: string[], markSoldOut: boolean) => {
+    setTogglingSectionId(sectionId);
+    Promise.all(itemIds.map((itemId) => setItemSoldOut(itemId, markSoldOut)))
+      .catch(() => window.alert("Não foi possível atualizar todos os itens. Confere um por um."))
+      .finally(() => setTogglingSectionId(null));
   };
 
   const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
@@ -211,6 +230,16 @@ function Dashboard({ user }: { user: User }) {
             <h1 className="mt-1 font-display text-3xl font-extrabold tracking-[-.045em]">Olá, {user.email}</h1>
           </div>
           <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
+        </div>
+
+        <div className={`mt-6 flex items-center justify-between gap-4 rounded-2xl border p-5 ${emergencyPaused ? "border-red-400/50 bg-red-500/10" : "border-white/10 bg-[#171211]"}`}>
+          <div>
+            <p className={`text-sm font-bold ${emergencyPaused ? "text-red-300" : "text-white"}`}>{emergencyPaused ? "⏸️ Pedidos pausados agora" : "Pedidos funcionando normal"}</p>
+            <p className="mt-0.5 text-xs text-white/50">Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial.</p>
+          </div>
+          <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "bg-white text-red-600 hover:bg-white/90" : "bg-red-500/90 text-white hover:bg-red-500"}`}>
+            {togglingPause ? "…" : emergencyPaused ? "Reativar pedidos" : "Pausar pedidos"}
+          </button>
         </div>
 
         <PeriodSection title="Hoje" orders={todayOrders} />
@@ -334,9 +363,18 @@ function Dashboard({ user }: { user: User }) {
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
           <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui — as duas coisas atualizam sem precisar mexer no código.</p>
           <div className="mt-5 space-y-6">
-            {menuSections.map((section) => (
+            {menuSections.map((section) => {
+              const sectionItemIds = section.items.map((item) => item.id);
+              const allSoldOut = sectionItemIds.every((id) => soldOutIds.has(id));
+              const isTogglingSection = togglingSectionId === section.id;
+              return (
               <div key={section.id}>
-                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                  <button type="button" onClick={() => handleToggleSection(section.id, sectionItemIds, !allSoldOut)} disabled={isTogglingSection} className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${allSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>
+                    {isTogglingSection ? "…" : allSoldOut ? "Reativar todos" : "Marcar todos esgotados"}
+                  </button>
+                </div>
                 <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
                   {section.items.map((item) => {
                     const isSoldOut = soldOutIds.has(item.id);
@@ -374,7 +412,8 @@ function Dashboard({ user }: { user: User }) {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
