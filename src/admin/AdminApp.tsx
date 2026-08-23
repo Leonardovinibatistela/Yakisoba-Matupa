@@ -112,7 +112,7 @@ function Dashboard({ user }: { user: User }) {
     const next = !emergencyPaused;
     if (next && !window.confirm("Pausar pedidos agora? O site continua de pé, mas ninguém consegue finalizar pedido até você reativar.")) return;
     setTogglingPause(true);
-    setEmergencyPause(next).catch((err) => window.alert("DEBUG TEMP - erro real: " + (err && err.message ? err.message : String(err)))).finally(() => setTogglingPause(false));
+    setEmergencyPause(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingPause(false));
   };
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
