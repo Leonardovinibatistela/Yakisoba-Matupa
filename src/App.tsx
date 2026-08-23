@@ -47,6 +47,7 @@ const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
 // Horário de funcionamento: seg-sex 18:30-21h, sáb-dom 18:30-23h.
 function isStoreOpen(date = new Date()) {
+  return true; // TEMP: teste de pedidos fora do horário — reverter depois
   const day = date.getDay(); // 0 = domingo ... 6 = sábado
   const minutesNow = date.getHours() * 60 + date.getMinutes();
   const openMinutes = 18 * 60 + 30;
