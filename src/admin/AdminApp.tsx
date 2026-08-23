@@ -12,9 +12,11 @@ import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
-// feitos poucos minutos um do outro, provavelmente são o mesmo cliente
-// tentando de novo (ex.: internet fraca), não dois pedidos diferentes.
+// do MESMO telefone, feitos poucos minutos um do outro, provavelmente são o
+// mesmo cliente tentando de novo (ex.: internet fraca). Clientes diferentes
+// pedindo a mesma coisa por coincidência não contam como duplicado.
 const orderSignature = (order: OrderRecord) => order.items.map((item) => `${item.id}:${item.quantity}`).sort().join("|") + `#${order.total}`;
+const normalizePhone = (phone: string) => phone.replace(/\D/g, "");
 const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 function findDuplicateSuspects(orders: OrderRecord[]): Set<string> {
   const suspects = new Set<string>();
@@ -22,7 +24,8 @@ function findDuplicateSuspects(orders: OrderRecord[]): Set<string> {
     for (let j = i + 1; j < orders.length; j++) {
       const a = orders[i];
       const b = orders[j];
-      if (orderSignature(a) === orderSignature(b) && Math.abs(a.createdAt.getTime() - b.createdAt.getTime()) <= DUPLICATE_WINDOW_MS) {
+      const samePerson = normalizePhone(a.customerPhone) === normalizePhone(b.customerPhone);
+      if (samePerson && orderSignature(a) === orderSignature(b) && Math.abs(a.createdAt.getTime() - b.createdAt.getTime()) <= DUPLICATE_WINDOW_MS) {
         suspects.add(a.id);
         suspects.add(b.id);
       }
