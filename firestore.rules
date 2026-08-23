@@ -53,10 +53,11 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // Itens esgotados: qualquer visitante do site precisa ler essa lista pra
-    // saber o que esconder do cardápio, mas só o admin autenticado marca ou
-    // desmarca um item.
-    match /menuStatus/soldOut {
+    // Itens esgotados e preços alterados: qualquer visitante do site precisa
+    // ler (pra saber o que esconder e por quanto vender), mas só o admin
+    // autenticado escreve. Um documento por tipo de ajuste (soldOut,
+    // priceOverrides) dentro dessa coleção.
+    match /menuStatus/{document} {
       allow read: if true;
       allow write: if request.auth != null;
     }

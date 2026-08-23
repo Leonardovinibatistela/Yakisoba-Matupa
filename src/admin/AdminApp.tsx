@@ -6,6 +6,7 @@ import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarou
 import { uploadImageToCloudinary } from "../cloudinary";
 import { menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
+import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -109,6 +110,26 @@ function Dashboard({ user }: { user: User }) {
   const handleToggleSoldOut = (itemId: string, currentlySoldOut: boolean) => {
     setTogglingItemId(itemId);
     setItemSoldOut(itemId, !currentlySoldOut).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingItemId(null));
+  };
+
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+  useEffect(() => subscribePriceOverrides(setPriceOverrides), []);
+  const startEditPrice = (itemId: string, currentPrice: number) => {
+    setEditingPriceId(itemId);
+    setPriceDraft(currentPrice.toFixed(2).replace(".", ","));
+  };
+  const handleSavePrice = (itemId: string) => {
+    const parsed = Number(priceDraft.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) { window.alert("Digite um preço válido."); return; }
+    setSavingPriceId(itemId);
+    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch(() => window.alert("Não foi possível salvar o preço. Tenta de novo.")).finally(() => setSavingPriceId(null));
+  };
+  const handleResetPrice = (itemId: string) => {
+    setSavingPriceId(itemId);
+    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch(() => window.alert("Não foi possível restaurar o preço. Tenta de novo.")).finally(() => setSavingPriceId(null));
   };
 
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
@@ -310,8 +331,8 @@ function Dashboard({ user }: { user: User }) {
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
-          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Marcar itens como esgotados</h2>
-          <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca aqui que o item some do "Adicionar ao pedido" no site na hora, sem precisar mexer no código.</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
+          <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui — as duas coisas atualizam sem precisar mexer no código.</p>
           <div className="mt-5 space-y-6">
             {menuSections.map((section) => (
               <div key={section.id}>
@@ -320,9 +341,31 @@ function Dashboard({ user }: { user: User }) {
                   {section.items.map((item) => {
                     const isSoldOut = soldOutIds.has(item.id);
                     const isToggling = togglingItemId === item.id;
+                    const hasOverride = priceOverrides[item.id] !== undefined;
+                    const currentPrice = priceOverrides[item.id] ?? item.price;
+                    const isEditingPrice = editingPriceId === item.id;
+                    const isSavingPrice = savingPriceId === item.id;
                     return (
                       <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                        <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
+                        <div className="min-w-0 flex-1">
+                          <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {isEditingPrice ? (
+                              <>
+                                <span className="text-xs text-white/50">R$</span>
+                                <input type="text" inputMode="decimal" autoFocus value={priceDraft} onChange={(event) => setPriceDraft(event.target.value)} className="w-20 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs text-white outline-none focus:border-[#ff6b32]" />
+                                <button type="button" onClick={() => handleSavePrice(item.id)} disabled={isSavingPrice} className="rounded-full bg-[#ff5a19] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{isSavingPrice ? "…" : "Salvar"}</button>
+                                <button type="button" onClick={() => setEditingPriceId(null)} className="text-[10px] font-bold text-white/50 hover:text-white">Cancelar</button>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs text-white/50">{formatTotal(currentPrice)}{hasOverride && <span className="ml-1 text-white/30">(padrão: {formatTotal(item.price)})</span>}</span>
+                                <button type="button" onClick={() => startEditPrice(item.id, currentPrice)} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Editar preço</button>
+                                {hasOverride && <button type="button" onClick={() => handleResetPrice(item.id)} disabled={isSavingPrice} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
+                              </>
+                            )}
+                          </div>
+                        </div>
                         <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
                           {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
                         </button>
