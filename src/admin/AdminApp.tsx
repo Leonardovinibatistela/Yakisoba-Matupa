@@ -7,6 +7,8 @@ import { uploadImageToCloudinary } from "../cloudinary";
 import { menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
+import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoOverrides";
+import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 
@@ -163,6 +165,74 @@ function Dashboard({ user }: { user: User }) {
   const handleResetPrice = (itemId: string) => {
     setSavingPriceId(itemId);
     clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch(() => window.alert("Não foi possível restaurar o preço. Tenta de novo.")).finally(() => setSavingPriceId(null));
+  };
+
+  const [photoOverrides, setPhotoOverrides] = useState<Record<string, string>>({});
+  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
+  useEffect(() => subscribePhotoOverrides(setPhotoOverrides), []);
+  const handleChangeItemPhoto = (itemId: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploadingPhotoId(itemId);
+    uploadImageToCloudinary(file)
+      .then(({ url }) => setItemPhoto(itemId, url))
+      .catch(() => window.alert("Não foi possível enviar essa foto. Tenta de novo."))
+      .finally(() => setUploadingPhotoId(null));
+  };
+  const handleResetItemPhoto = (itemId: string) => {
+    setUploadingPhotoId(itemId);
+    clearItemPhoto(itemId).catch(() => window.alert("Não foi possível restaurar a foto padrão.")).finally(() => setUploadingPhotoId(null));
+  };
+
+  // Itens que o próprio cliente adiciona pelo painel (sabor novo, combinado
+  // novo etc.) — somados aos itens "de fábrica" na hora de listar cada seção.
+  const [customItems, setCustomItems] = useState<CustomMenuItem[]>([]);
+  useEffect(() => subscribeCustomItems(setCustomItems), []);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+  const handleRemoveCustomItem = (item: CustomMenuItem) => {
+    if (!window.confirm(`Remover "${item.name}" do cardápio? Essa ação não pode ser desfeita.`)) return;
+    setRemovingItemId(item.id);
+    removeCustomItem(item.id).catch(() => window.alert("Não foi possível remover esse item. Tenta de novo.")).finally(() => setRemovingItemId(null));
+  };
+
+  const [newItemSectionId, setNewItemSectionId] = useState(menuSections[0].id);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemDescription, setNewItemDescription] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemPhotoFile, setNewItemPhotoFile] = useState<File | null>(null);
+  const [newItemPhotoPreview, setNewItemPhotoPreview] = useState<string | null>(null);
+  const [addingItem, setAddingItem] = useState(false);
+  const handlePickNewItemPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setNewItemPhotoFile(file);
+    setNewItemPhotoPreview(URL.createObjectURL(file));
+  };
+  const resetNewItemForm = () => {
+    setNewItemName("");
+    setNewItemDescription("");
+    setNewItemPrice("");
+    setNewItemPhotoFile(null);
+    setNewItemPhotoPreview(null);
+  };
+  const handleAddItem = () => {
+    const name = newItemName.trim();
+    const price = Number(newItemPrice.replace(",", "."));
+    if (!name) { window.alert("Digite o nome do item."); return; }
+    if (!Number.isFinite(price) || price < 0) { window.alert("Digite um preço válido."); return; }
+    setAddingItem(true);
+    const create = (image?: string) =>
+      addCustomItem({ sectionId: newItemSectionId, name, description: newItemDescription.trim() || undefined, price, image })
+        .then(resetNewItemForm)
+        .catch(() => window.alert("Não foi possível adicionar o item. Tenta de novo."))
+        .finally(() => setAddingItem(false));
+    if (newItemPhotoFile) {
+      uploadImageToCloudinary(newItemPhotoFile).then(({ url }) => create(url)).catch(() => { window.alert("Não foi possível enviar a foto. Tenta de novo."); setAddingItem(false); });
+    } else {
+      create(undefined);
+    }
   };
 
   const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
@@ -365,7 +435,7 @@ function Dashboard({ user }: { user: User }) {
           {!carouselImages ? (
             <p className="mt-4 text-sm text-white/50">Carregando…</p>
           ) : (
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {carouselImages.map((image) => (
                 <div key={image.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
                   <img src={image.url} alt="Foto do carrossel" className="h-40 w-full object-cover" />
@@ -389,7 +459,9 @@ function Dashboard({ user }: { user: User }) {
           <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui — as duas coisas atualizam sem precisar mexer no código.</p>
           <div className="mt-5 space-y-6">
             {menuSections.map((section) => {
-              const sectionItemIds = section.items.map((item) => item.id);
+              const sectionCustomItems = customItems.filter((item) => item.sectionId === section.id);
+              const sectionItems: { id: string; name: string; price: number; image?: string }[] = [...section.items, ...sectionCustomItems];
+              const sectionItemIds = sectionItems.map((item) => item.id);
               const allSoldOut = sectionItemIds.every((id) => soldOutIds.has(id));
               const isTogglingSection = togglingSectionId === section.id;
               return (
@@ -401,15 +473,24 @@ function Dashboard({ user }: { user: User }) {
                   </button>
                 </div>
                 <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
-                  {section.items.map((item) => {
+                  {sectionItems.map((item) => {
+                    const isCustom = sectionCustomItems.some((custom) => custom.id === item.id);
                     const isSoldOut = soldOutIds.has(item.id);
                     const isToggling = togglingItemId === item.id;
                     const hasOverride = priceOverrides[item.id] !== undefined;
                     const currentPrice = priceOverrides[item.id] ?? item.price;
                     const isEditingPrice = editingPriceId === item.id;
                     const isSavingPrice = savingPriceId === item.id;
+                    const currentPhoto = photoOverrides[item.id] ?? item.image;
+                    const isUploadingPhoto = uploadingPhotoId === item.id;
+                    const isRemoving = removingItemId === item.id;
                     return (
-                      <div key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                        <label className={`relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                          {currentPhoto ? <img src={currentPhoto} alt={item.name} className="h-full w-full object-cover" /> : "Sem foto"}
+                          <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingPhoto ? "…" : "Trocar"}</span>
+                          <input type="file" accept="image/*" onChange={handleChangeItemPhoto(item.id)} disabled={isUploadingPhoto} className="hidden" />
+                        </label>
                         <div className="min-w-0 flex-1">
                           <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -425,13 +506,17 @@ function Dashboard({ user }: { user: User }) {
                                 <span className="text-xs text-white/50">{formatTotal(currentPrice)}{hasOverride && <span className="ml-1 text-white/30">(padrão: {formatTotal(item.price)})</span>}</span>
                                 <button type="button" onClick={() => startEditPrice(item.id, currentPrice)} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Editar preço</button>
                                 {hasOverride && <button type="button" onClick={() => handleResetPrice(item.id)} disabled={isSavingPrice} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
+                                {currentPhoto && photoOverrides[item.id] !== undefined && <button type="button" onClick={() => handleResetItemPhoto(item.id)} disabled={isUploadingPhoto} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar foto padrão</button>}
                               </>
                             )}
                           </div>
                         </div>
-                        <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
-                          {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
-                        </button>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
+                            {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
+                          </button>
+                          {isCustom && <button type="button" onClick={() => handleRemoveCustomItem(item as CustomMenuItem)} disabled={isRemoving} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isRemoving ? "Removendo…" : "🗑 Remover item"}</button>}
+                        </div>
                       </div>
                     );
                   })}
@@ -439,6 +524,43 @@ function Dashboard({ user }: { user: User }) {
               </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>
+          <p className="mt-1.5 text-sm text-white/50">Um sabor novo de yakisoba, um combinado novo — o que for. Escolhe a seção, preenche e já aparece no site na hora.</p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-[auto_1fr]">
+            <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingItem ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+              {newItemPhotoPreview ? <img src={newItemPhotoPreview} alt="Prévia do item novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
+              <input type="file" accept="image/*" onChange={handlePickNewItemPhoto} disabled={addingItem} className="hidden" />
+            </label>
+            <div className="grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Seção</label>
+                  <select value={newItemSectionId} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
+                    {menuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
+                  <input type="text" inputMode="decimal" value={newItemPrice} onChange={(event) => setNewItemPrice(event.target.value)} placeholder="Ex: 36,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Nome do item</label>
+                <input type="text" value={newItemName} onChange={(event) => setNewItemName(event.target.value)} placeholder="Ex: Yakisoba de camarão 500g" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Descrição (opcional)</label>
+                <input type="text" value={newItemDescription} onChange={(event) => setNewItemDescription(event.target.value)} placeholder="Ex: Camarão, legumes e macarrão" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+              </div>
+              <button type="button" onClick={handleAddItem} disabled={addingItem} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
+                {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

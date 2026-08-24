@@ -3,7 +3,7 @@ import { db } from "./firebase";
 
 export type CarouselImage = { id: string; url: string; publicId: string; createdAt: Date };
 
-export const CAROUSEL_MAX_IMAGES = 2;
+export const CAROUSEL_MAX_IMAGES = 5;
 
 const carouselCollectionRef = collection(db, "carouselImages");
 
