@@ -228,6 +228,11 @@ function PhotoCarousel() {
   const [images, setImages] = useState<CarouselImage[] | null>(null);
   const [index, setIndex] = useState(0);
   useEffect(() => { fetchCarouselImages().then(setImages).catch(() => setImages([])); }, []);
+  useEffect(() => {
+    if (!images || images.length <= 1) return;
+    const interval = setInterval(() => setIndex((current) => (current + 1) % images.length), 8000);
+    return () => clearInterval(interval);
+  }, [images]);
   if (!images || images.length === 0) return null;
   const image = images[index % images.length];
   const goTo = (nextIndex: number) => setIndex((nextIndex + images.length) % images.length);
@@ -235,8 +240,8 @@ function PhotoCarousel() {
     <div className="mx-auto max-w-7xl px-5 lg:px-8">
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Direto da cozinha</p>
       <h2 id="fotos-title" className="mt-2 font-display text-3xl font-extrabold tracking-[-.04em] text-white sm:text-4xl">Confira o que está saindo</h2>
-      <div className="relative mt-8 overflow-hidden rounded-3xl border border-white/10">
-        <img src={image.url} alt="Foto do Sooba" className="h-64 w-full object-cover sm:h-80" />
+      <div className="relative mt-8 overflow-hidden rounded-3xl border border-white/10 bg-black/40">
+        <img src={image.url} alt="Foto do Sooba" className="h-64 w-full object-contain sm:h-80" />
         {images.length > 1 && <>
           <button type="button" onClick={() => goTo(index - 1)} aria-label="Foto anterior" className="absolute left-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"><ArrowIcon className="h-4 w-4 rotate-180" /></button>
           <button type="button" onClick={() => goTo(index + 1)} aria-label="Próxima foto" className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"><ArrowIcon className="h-4 w-4" /></button>
