@@ -246,7 +246,7 @@ function PhotoCarousel() {
   useEffect(() => { fetchCarouselImages().then(setImages).catch(() => setImages([])); }, []);
   useEffect(() => {
     if (!images || images.length <= 1) return;
-    const interval = setInterval(() => setIndex((current) => (current + 1) % images.length), 8000);
+    const interval = setInterval(() => setIndex((current) => (current + 1) % images.length), 5000);
     return () => clearInterval(interval);
   }, [images]);
   if (!images || images.length === 0) return null;
