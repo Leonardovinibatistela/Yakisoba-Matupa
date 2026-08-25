@@ -60,7 +60,7 @@ export const addonSections: MenuSection[] = [
 export type ComboOffer = MenuItem & { days: number[]; daysLabel: string };
 export const comboOffers: ComboOffer[] = [
   { id: "combo-individual", name: "Combo Individual", price: 65.9, priceLabel: "R$65,90", description: "1 Yakisoba Médio, 1 porção de Hot Roll, 1 Coca-Cola lata", days: [1], daysLabel: "Segunda-feira", image: "cardapio/combo-individual.jpg" },
-  { id: "combo-filadelfia", name: "Combo Filadélfia", price: 67.9, priceLabel: "R$67,90", description: "1 Uramaki Filadélfia, 1 Hot Roll Filadélfia, 1 Coca-Cola lata", days: [2], daysLabel: "Terça-feira", image: "cardapio/uramaki-fila.jpg" },
+  { id: "combo-filadelfia", name: "Combo Filadélfia", price: 67.9, priceLabel: "R$67,90", description: "1 Uramaki Filadélfia, 1 Hot Roll Filadélfia, 1 Coca-Cola lata", days: [2], daysLabel: "Terça-feira", image: "cardapio/combo-filadelfia.jpg" },
   { id: "combo-duplo", name: "Combo Duplo", price: 74.9, priceLabel: "R$74,90", description: "2 Yakisobas Médios + 1 Coca-Cola 1,5L", days: [3, 4], daysLabel: "Quarta e Quinta", image: "cardapio/combo-duplo.jpg" },
   { id: "combo-familia", name: "Combo Família", price: 114.9, priceLabel: "R$114,90", description: "1 Yakisoba Grande + 1 Yakisoba Médio + 1 Porção de Hot Roll + 1 Coca-Cola 1,5L", days: [5, 6, 0], daysLabel: "Sexta, Sábado e Domingo", image: "cardapio/combo-familia.jpg" },
 ];
