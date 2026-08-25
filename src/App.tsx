@@ -51,11 +51,11 @@ const groupCartLines = (lines: CartLine[]) => {
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
-// Horário de funcionamento: seg-sex 18:30-21h, sáb-dom 18:30-23h.
+// Horário de funcionamento: seg-sex 18:30-22h, sáb-dom 18:30-23h.
 function scheduleMinutes(date: Date) {
   const day = date.getDay(); // 0 = domingo ... 6 = sábado
   const isWeekend = day === 0 || day === 6;
-  return { openMinutes: 18 * 60 + 30, closeMinutes: isWeekend ? 23 * 60 : 21 * 60 };
+  return { openMinutes: 18 * 60 + 30, closeMinutes: isWeekend ? 23 * 60 : 22 * 60 };
 }
 function isStoreOpen(date = new Date()) {
   const { openMinutes, closeMinutes } = scheduleMinutes(date);
@@ -70,7 +70,7 @@ function isBeforeClosingTime(date = new Date()) {
   const minutesNow = date.getHours() * 60 + date.getMinutes();
   return minutesNow < scheduleMinutes(date).closeMinutes;
 }
-const STORE_HOURS_LABEL = "Seg a Sex 18:30–21h · Sáb e Dom 18:30–23h";
+const STORE_HOURS_LABEL = "Seg a Sex 18:30–22h · Sáb e Dom 18:30–23h";
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
 const paymentOptions: { id: "pix" | "cartao" | "dinheiro"; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Cartão" }, { id: "dinheiro", label: "Dinheiro" }];
 const PIX_KEY = "66992026783";

@@ -13,7 +13,7 @@ import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 21h · Sáb e Dom 23h";
+const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
 // do MESMO telefone, feitos poucos minutos um do outro, provavelmente são o
