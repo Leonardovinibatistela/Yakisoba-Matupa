@@ -280,6 +280,7 @@ function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string,
   if (todaysCombos.length === 0) return null; // nenhum combo cadastrado pra hoje
   const combo = todaysCombos[index % todaysCombos.length];
   const quantity = quantities[combo.id] ?? 0;
+  const goTo = (nextIndex: number) => setIndex((nextIndex + todaysCombos.length) % todaysCombos.length);
   return <section className="bg-[#100d0c] py-14 sm:py-16" aria-labelledby="combos-title">
     <div className="mx-auto max-w-7xl px-5 lg:px-8">
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Combo fixo de hoje</p>
@@ -300,7 +301,11 @@ function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string,
           </div>
           {combo.image && <img src={combo.image} alt={combo.name} loading="lazy" className="aspect-square w-full rounded-2xl object-cover sm:w-64 lg:w-72" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
         </div>
-        {todaysCombos.length > 1 && <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">{todaysCombos.map((offer, i) => <span key={offer.id} className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-[#ff5a19]" : "w-2 bg-white/25"}`} />)}</div>}
+        {todaysCombos.length > 1 && <>
+          <button type="button" onClick={() => goTo(index - 1)} aria-label="Combo anterior" className="absolute left-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"><ArrowIcon className="h-4 w-4 rotate-180" /></button>
+          <button type="button" onClick={() => goTo(index + 1)} aria-label="Próximo combo" className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"><ArrowIcon className="h-4 w-4" /></button>
+          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">{todaysCombos.map((offer, i) => <span key={offer.id} className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-[#ff5a19]" : "w-2 bg-white/25"}`} />)}</div>
+        </>}
       </div>
     </div>
   </section>;
