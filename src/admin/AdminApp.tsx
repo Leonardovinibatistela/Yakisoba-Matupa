@@ -9,6 +9,7 @@ import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
+import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 
@@ -137,6 +138,17 @@ function Dashboard({ user }: { user: User }) {
   const handleToggleSoldOut = (itemId: string, currentlySoldOut: boolean) => {
     setTogglingItemId(itemId);
     setItemSoldOut(itemId, !currentlySoldOut).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingItemId(null));
+  };
+
+  // Itens "de fábrica" (menuData.ts) que o admin excluiu do site — não apaga
+  // nada do código, só some do cardápio público. Reversível a qualquer hora.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [togglingHiddenId, setTogglingHiddenId] = useState<string | null>(null);
+  useEffect(() => subscribeHiddenItems(setHiddenIds), []);
+  const handleToggleHidden = (itemId: string, itemName: string, currentlyHidden: boolean) => {
+    if (!currentlyHidden && !window.confirm(`Excluir "${itemName}" do site? Ele some do cardápio pro público, mas fica guardado aqui — dá pra restaurar quando quiser.`)) return;
+    setTogglingHiddenId(itemId);
+    setItemHidden(itemId, !currentlyHidden).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingHiddenId(null));
   };
 
   const [togglingSectionId, setTogglingSectionId] = useState<string | null>(null);
@@ -456,7 +468,7 @@ function Dashboard({ user }: { user: User }) {
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
-          <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui — as duas coisas atualizam sem precisar mexer no código.</p>
+          <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui. Não vende mais esse item? "Excluir do site" tira ele do cardápio sem apagar nada — dá pra restaurar quando quiser.</p>
           <div className="mt-5 space-y-6">
             {menuSections.map((section) => {
               const sectionCustomItems = customItems.filter((item) => item.sectionId === section.id);
@@ -484,8 +496,10 @@ function Dashboard({ user }: { user: User }) {
                     const currentPhoto = photoOverrides[item.id] ?? item.image;
                     const isUploadingPhoto = uploadingPhotoId === item.id;
                     const isRemoving = removingItemId === item.id;
+                    const isHidden = hiddenIds.has(item.id);
+                    const isTogglingHidden = togglingHiddenId === item.id;
                     return (
-                      <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                      <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${isHidden ? "opacity-50" : ""}`}>
                         <label className={`relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
                           {currentPhoto ? <img src={currentPhoto} alt={item.name} className="h-full w-full object-cover" /> : "Sem foto"}
                           <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingPhoto ? "…" : "Trocar"}</span>
@@ -493,6 +507,7 @@ function Dashboard({ user }: { user: User }) {
                         </label>
                         <div className="min-w-0 flex-1">
                           <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
+                          {isHidden && <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Excluído do site</span>}
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             {isEditingPrice ? (
                               <>
@@ -515,7 +530,11 @@ function Dashboard({ user }: { user: User }) {
                           <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
                             {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
                           </button>
-                          {isCustom && <button type="button" onClick={() => handleRemoveCustomItem(item as CustomMenuItem)} disabled={isRemoving} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isRemoving ? "Removendo…" : "🗑 Remover item"}</button>}
+                          {isCustom ? (
+                            <button type="button" onClick={() => handleRemoveCustomItem(item as CustomMenuItem)} disabled={isRemoving} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isRemoving ? "Removendo…" : "🗑 Remover item"}</button>
+                          ) : (
+                            <button type="button" onClick={() => handleToggleHidden(item.id, item.name, isHidden)} disabled={isTogglingHidden} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isTogglingHidden ? "…" : isHidden ? "↩️ Restaurar no site" : "🗑 Excluir do site"}</button>
+                          )}
                         </div>
                       </div>
                     );
