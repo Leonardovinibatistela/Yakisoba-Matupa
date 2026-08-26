@@ -270,32 +270,37 @@ function PhotoCarousel() {
 
 function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void }) {
   const todayDay = new Date().getDay();
-  const todaysCombos = comboOffers.filter((offer) => offer.days.includes(todayDay));
+  const todaysCombos = useMemo(() => comboOffers.filter((offer) => offer.days.includes(todayDay)), [todayDay]);
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (todaysCombos.length <= 1) return;
+    const interval = setInterval(() => setIndex((current) => (current + 1) % todaysCombos.length), 5000);
+    return () => clearInterval(interval);
+  }, [todaysCombos.length]);
   if (todaysCombos.length === 0) return null; // nenhum combo cadastrado pra hoje
+  const combo = todaysCombos[index % todaysCombos.length];
+  const quantity = quantities[combo.id] ?? 0;
   return <section className="bg-[#100d0c] py-14 sm:py-16" aria-labelledby="combos-title">
     <div className="mx-auto max-w-7xl px-5 lg:px-8">
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Combo fixo de hoje</p>
       <h2 id="combos-title" className="mt-2 font-display text-3xl font-extrabold tracking-[-.04em] text-white sm:text-4xl">Promoção do dia</h2>
-      <div className="mt-8 space-y-6">
-        {todaysCombos.map((combo) => { const quantity = quantities[combo.id] ?? 0; return (
-          <div key={combo.id} className="relative overflow-hidden rounded-3xl border border-[#ff5a19]/25 bg-gradient-to-br from-[#241813] to-[#100d0c] p-6 sm:p-10">
-            <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🔥 Vale hoje</span>
-                  <span className="text-xs font-bold uppercase tracking-[.12em] text-[#ff9b79]">{combo.daysLabel}</span>
-                </div>
-                <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">{combo.name}</h3>
-                {combo.description && <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">{combo.description}</p>}
-                <div className="mt-6 flex flex-wrap items-center gap-4">
-                  <span className="font-display text-2xl font-extrabold tracking-[-.04em] text-[#ff875c]">{combo.priceLabel}</span>
-                  {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity(combo.id, next)} label={combo.name} dark /> : <button type="button" onClick={() => setQuantity(combo.id, 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
-                </div>
-              </div>
-              {combo.image && <img src={combo.image} alt={combo.name} loading="lazy" className="aspect-square w-full rounded-2xl object-cover sm:w-64 lg:w-72" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+      <div className="relative mt-8 overflow-hidden rounded-3xl border border-[#ff5a19]/25 bg-gradient-to-br from-[#241813] to-[#100d0c] p-6 sm:p-10">
+        <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🔥 Vale hoje</span>
+              <span className="text-xs font-bold uppercase tracking-[.12em] text-[#ff9b79]">{combo.daysLabel}</span>
+            </div>
+            <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">{combo.name}</h3>
+            {combo.description && <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">{combo.description}</p>}
+            <div className="mt-6 flex flex-wrap items-center gap-4">
+              <span className="font-display text-2xl font-extrabold tracking-[-.04em] text-[#ff875c]">{combo.priceLabel}</span>
+              {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity(combo.id, next)} label={combo.name} dark /> : <button type="button" onClick={() => setQuantity(combo.id, 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
             </div>
           </div>
-        ); })}
+          {combo.image && <img src={combo.image} alt={combo.name} loading="lazy" className="aspect-square w-full rounded-2xl object-cover sm:w-64 lg:w-72" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+        </div>
+        {todaysCombos.length > 1 && <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2">{todaysCombos.map((offer, i) => <span key={offer.id} className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-[#ff5a19]" : "w-2 bg-white/25"}`} />)}</div>}
       </div>
     </div>
   </section>;
