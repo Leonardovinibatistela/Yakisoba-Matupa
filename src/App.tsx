@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { registerOrder, type OrderPayload } from "./orders";
+import { registerOrder, subscribeNextOrderNumber, type OrderPayload } from "./orders";
 import { fetchCarouselImages, type CarouselImage } from "./carousel";
 import { addonSections, comboOffers, menuSections, type MenuItem } from "./menuData";
 import { subscribeSoldOutItems } from "./soldOut";
@@ -96,6 +96,8 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "cartao" | "dinheiro">("pix");
   const [pixCopied, setPixCopied] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
+  const [nextOrderNumber, setNextOrderNumber] = useState(1);
+  useEffect(() => subscribeNextOrderNumber(setNextOrderNumber), []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   useEffect(() => subscribeSoldOutItems(setSoldOutIds), []);
@@ -174,6 +176,7 @@ export default function App() {
     ]).concat(orphanAddons.map((addon) => `${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`));
     const buildMessage = () => [
       "Olá, Sooba! Gostaria de fazer este pedido:",
+      `Pedido #${nextOrderNumber}`,
       "",
       `Nome: ${customerName.trim()}`,
       `Telefone: ${customerPhone.trim()}`,

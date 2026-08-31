@@ -1,4 +1,4 @@
-import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
 export type OrderLineItem = { id: string; name: string; quantity: number; unitPrice: number; lineTotal: number; parentId?: string };
@@ -30,6 +30,24 @@ const ordersCollectionRef = collection(db, "orders");
  * data de hoje no fuso do cliente — é a mesma base que já usamos pra saber se
  * a loja está aberta).
  */
+/**
+ * Acompanha ao vivo qual vai ser o PRÓXIMO número de pedido, sem precisar de
+ * transação — só pra já mostrar "Pedido #N" na mensagem do WhatsApp na hora
+ * do clique (sem atrasar o window.open, que precisa ser síncrono). O número
+ * real e definitivo continua sendo o que registerOrder() grava no Firestore;
+ * esse aqui é só uma previsão (fica errado só no raríssimo caso de dois
+ * pedidos no mesmo segundo exato).
+ */
+export function subscribeNextOrderNumber(onUpdate: (nextNumber: number) => void, onError?: (error: unknown) => void): () => void {
+  return onSnapshot(countersRef, (snap) => {
+    const today = new Date().toLocaleDateString("en-CA");
+    const data = snap.exists() ? snap.data() : null;
+    const isSameDay = data?.date === today;
+    const next = isSameDay ? ((data?.current as number) ?? 0) + 1 : 1;
+    onUpdate(next);
+  }, onError);
+}
+
 export async function registerOrder(payload: OrderPayload): Promise<number> {
   const today = new Date().toLocaleDateString("en-CA");
   const orderNumber = await runTransaction(db, async (transaction) => {
