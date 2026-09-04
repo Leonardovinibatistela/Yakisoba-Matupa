@@ -376,8 +376,12 @@ function Dashboard({ user }: { user: User }) {
   const todayOrders = ordersInRange(orders, startOfDay(now));
   const weekOrders = ordersInRange(orders, startOfWeek(now));
   const monthOrders = ordersInRange(orders, startOfMonth(now));
-  const weekdayChart = revenueByWeekday(weekOrders);
+  // O gráfico e o Top 3 aqui embaixo (dentro de "Rever outra data") seguem o
+  // mês escolhido no calendário, não a semana atual — assim dá pra comparar
+  // qualquer mês passado, não só hoje.
+  const weekdayChart = revenueByWeekday(pickedMonthOrders ?? []);
   const maxWeekdayValue = Math.max(1, ...weekdayChart.map((bucket) => bucket.total));
+  const pickedTop3 = bestSellers(pickedMonthOrders ?? [], 3);
 
   const pickedDateObj = (() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
@@ -459,6 +463,22 @@ function Dashboard({ user }: { user: User }) {
                 <p className="mt-2 font-display text-2xl font-extrabold">{formatTotal(sumRevenue(pickedMonthOrders))}</p>
                 <p className="mt-1 text-xs text-white/55"><strong className="text-white">{pickedMonthOrders.length}</strong> pedido{pickedMonthOrders.length === 1 ? "" : "s"} nesse mês</p>
               </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:col-span-2">
+                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos em {pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
+                {pickedTop3.length === 0 ? (
+                  <p className="mt-3 text-sm text-white/50">Sem pedidos nesse mês.</p>
+                ) : (
+                  <div className="mt-3 space-y-2.5">
+                    {pickedTop3.map((item, index) => (
+                      <div key={item.name} className="flex items-center gap-3">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ff5a19]/15 text-xs font-extrabold text-[#ff875c]">{index + 1}º</span>
+                        <span className="flex-1 truncate text-sm font-bold">{item.name}</span>
+                        <span className="shrink-0 text-xs text-white/55">{item.quantity}x</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
           {!pickedLoading && pickedDayOrders && pickedDayOrders.length > 0 && (() => {
@@ -513,7 +533,7 @@ function Dashboard({ user }: { user: User }) {
           })()}
 
           <div className="mt-6 border-t border-white/10 pt-5">
-            <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Semana atual</p>
+            <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
             <h3 className="mt-1 text-sm font-bold text-white">Qual dia da semana vendeu mais</h3>
             <div className="mt-5 flex justify-between gap-2 sm:gap-3" style={{ height: "140px" }}>
               {weekdayChart.map((bucket) => (
