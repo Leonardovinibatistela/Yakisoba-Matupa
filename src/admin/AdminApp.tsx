@@ -511,7 +511,7 @@ function Dashboard({ user }: { user: User }) {
           <div className="mt-6 border-t border-white/10 pt-5">
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Semana atual</p>
             <h3 className="mt-1 text-sm font-bold text-white">Qual dia da semana vendeu mais</h3>
-            <div className="mt-5 flex items-end justify-between gap-2 sm:gap-3" style={{ height: "140px" }}>
+            <div className="mt-5 flex justify-between gap-2 sm:gap-3" style={{ height: "140px" }}>
               {weekdayChart.map((bucket) => (
                 <div key={bucket.label} className="flex flex-1 flex-col items-center gap-2">
                   <div className="flex w-full flex-1 items-end justify-center">
