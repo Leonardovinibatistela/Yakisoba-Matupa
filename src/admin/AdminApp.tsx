@@ -440,7 +440,11 @@ function Dashboard({ user }: { user: User }) {
         <div className="mt-10 rounded-2xl border border-[#ff5a19]/25 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Rever outra data</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Pesquisar dia, mês e ano</h2>
-          <input type="date" value={pickedDate} onChange={(e) => setPickedDate(e.target.value)} max={toDateInputValue(new Date())} className="mt-4 rounded-xl border border-white/15 bg-white/[0.06] px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <input type="date" value={pickedDate} onChange={(e) => setPickedDate(e.target.value)} max={toDateInputValue(new Date())} className="rounded-xl border border-white/15 bg-white/[0.06] px-3.5 py-2.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+            <button type="button" onClick={() => setPickedDate(toDateInputValue(new Date()))} className="rounded-full border border-white/15 px-3.5 py-2.5 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Hoje</button>
+            <button type="button" onClick={() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); setPickedDate(toDateInputValue(d)); }} className="rounded-full border border-white/15 px-3.5 py-2.5 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Mês passado</button>
+          </div>
           {pickedLoading ? (
             <p className="mt-4 text-sm text-white/50">Buscando…</p>
           ) : pickedDayOrders && pickedMonthOrders ? (
