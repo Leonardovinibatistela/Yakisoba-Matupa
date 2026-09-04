@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { registerOrder, subscribeNextOrderNumber, type OrderPayload } from "./orders";
 import { fetchCarouselImages, type CarouselImage } from "./carousel";
-import { addonSections, comboOffers, menuSections, type MenuItem } from "./menuData";
+import { addonSections, menuSections, type MenuItem } from "./menuData";
+import { formatDaysLabel, subscribeDailyCombos, type DailyCombo } from "./dailyCombos";
 import { subscribeSoldOutItems } from "./soldOut";
 import { subscribePriceOverrides } from "./priceOverrides";
 import { subscribePhotoOverrides } from "./photoOverrides";
@@ -10,7 +11,7 @@ import { subscribeHiddenItems } from "./hiddenItems";
 import { subscribeEmergencyPause } from "./emergencyPause";
 import { subscribeManualOpen } from "./manualOpen";
 
-const allItems = [...menuSections, ...addonSections].flatMap((section) => section.items).concat(comboOffers);
+const allItems = [...menuSections, ...addonSections].flatMap((section) => section.items);
 const allItemsById = new Map(allItems.map((item) => [item.id, item]));
 
 // Acompanhamento vira uma linha de carrinho PRÓPRIA, com id composto
@@ -33,6 +34,7 @@ const applyOverrides = (item: MenuItem, priceOverrides: Record<string, number>, 
 };
 /** Converte um item que o admin adicionou pelo painel pro mesmo formato usado pelo resto do cardápio. */
 const fromCustomItem = (item: CustomMenuItem): MenuItem => ({ id: item.id, name: item.name, description: item.description, price: item.price, priceLabel: item.priceLabel, image: item.image });
+const fromDailyCombo = (combo: DailyCombo): MenuItem => ({ id: combo.id, name: combo.name, description: combo.description, price: combo.price, priceLabel: combo.priceLabel, image: combo.image });
 const resolveCartLine = (id: string, itemsById: Map<string, MenuItem>, priceOverrides: Record<string, number>, photoOverrides: Record<string, string>): CartLine | null => {
   const parsed = parseAddonCartId(id);
   if (parsed) {
@@ -109,13 +111,17 @@ export default function App() {
   useEffect(() => subscribePhotoOverrides(setPhotoOverrides), []);
   const [customItems, setCustomItems] = useState<CustomMenuItem[]>([]);
   useEffect(() => subscribeCustomItems(setCustomItems), []);
+  const [dailyCombos, setDailyCombos] = useState<DailyCombo[]>([]);
+  useEffect(() => subscribeDailyCombos(setDailyCombos), []);
   // Mapa de busca (id -> item) usado pra montar o carrinho — inclui os itens
-  // "de fábrica" (menuData.ts) mais os que o admin adicionou pelo painel.
+  // "de fábrica" (menuData.ts), os que o admin adicionou pelo painel, e os
+  // combos do dia (também gerenciados pelo admin).
   const itemsById = useMemo(() => {
     const map = new Map(allItemsById);
     customItems.forEach((item) => map.set(item.id, fromCustomItem(item)));
+    dailyCombos.forEach((combo) => map.set(combo.id, fromDailyCombo(combo)));
     return map;
-  }, [customItems]);
+  }, [customItems, dailyCombos]);
   const [emergencyPaused, setEmergencyPaused] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
   const [manualOpen, setManualOpen] = useState(false);
@@ -230,7 +236,7 @@ export default function App() {
     <main>
       <section id="inicio" className="relative isolate flex min-h-[780px] items-end overflow-hidden pt-[72px] sm:min-h-[790px] lg:min-h-[820px]" aria-labelledby="hero-title"><img src="sooba-hero.jpg" alt="Prato de yakisoba e seleção de sushi (uramaki, sashimi de salmão) do Sooba sobre mesa escura" className="absolute inset-0 -z-20 h-full w-full object-cover object-[62%_center] motion-safe:animate-[hero-in_1.2s_ease-out_both]" /><div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(16,13,12,.96)_0%,rgba(16,13,12,.80)_34%,rgba(16,13,12,.24)_75%),linear-gradient(0deg,rgba(16,13,12,.94)_0%,transparent_49%)]" /><div className="hero-glow absolute -left-28 top-36 -z-10 h-72 w-72 rounded-full bg-[#ff4d12]/20 blur-[105px]" /><div className="mx-auto w-full max-w-7xl px-5 pb-16 pt-24 sm:pb-20 lg:px-8 lg:pb-24"><div className="max-w-[655px]"><p className="reveal-up text-xs font-bold uppercase tracking-[0.23em] text-[#ff7c50]">Sushi e yakisoba delivery em Matupá e Peixoto de Azevedo</p><div className="reveal-up delay-1 mt-4 overflow-hidden"><p className="font-display text-[clamp(4.2rem,11vw,8.8rem)] font-black leading-[.76] tracking-[-0.105em] text-white">SOOBA<span className="text-[#ff5a19]">.</span></p></div><h1 id="hero-title" className="reveal-up delay-2 mt-7 max-w-xl font-display text-[clamp(2.25rem,4.3vw,4.4rem)] font-extrabold leading-[.95] tracking-[-0.07em] text-[#fff9f3]">Seu delivery favorito de sushi e yakisoba.</h1><p className="reveal-up delay-3 mt-5 max-w-md text-base leading-relaxed text-white/70 sm:text-lg">Uramaki, sashimi de salmão e yakisoba, prontos pra pedir. A gente prepara em Matupá, você confirma pelo WhatsApp.</p><div className="reveal-up delay-4 mt-8 flex flex-wrap gap-3"><a href="#menu" className="group inline-flex items-center gap-2 rounded-full bg-[#ff5a19] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_35px_rgba(255,90,25,.24)] transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]">Ver cardápio <ArrowIcon className="h-4 w-4 transition group-hover:translate-x-0.5" /></a><a href="https://wa.me/556692026783" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.07] px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-white/[0.14]"><WhatsAppIcon className="h-4 w-4" /> Pedir no WhatsApp</a></div></div></div><a href="#menu" className="absolute bottom-7 right-6 hidden items-center gap-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/60 lg:flex"><span className="h-px w-9 bg-white/30" /> Explore o cardápio</a></section>
       <section className="border-y border-white/[0.08] bg-[#171211] py-6" aria-label="Destaques do Sooba"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-10 gap-y-3 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 lg:px-8"><span className="text-white/85">Sushi com presença</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Yakisoba feito na hora</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Pedido direto no WhatsApp</span></div></section>
-      <PromoCarousel quantities={quantities} setQuantity={setQuantity} />
+      <PromoCarousel quantities={quantities} setQuantity={setQuantity} combos={dailyCombos} />
       <PhotoCarousel />
       <section id="sobre" className="bg-[#100d0c] py-20 sm:py-28" aria-labelledby="sobre-title"><div className="mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-[.82fr_1.18fr] lg:items-end lg:gap-24 lg:px-8"><div className="reveal-on-scroll"><p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Do corte à wok</p><h2 id="sobre-title" className="mt-4 max-w-md font-display text-4xl font-extrabold leading-[.96] tracking-[-.065em] text-white sm:text-5xl">Duas vontades. Um pedido memorável.</h2><p className="mt-6 max-w-md text-base leading-relaxed text-white/62">Sushi para quem quer delicadeza. Yakisoba para quem quer intensidade. No Sooba, você escolhe os dois sem abrir mão do sabor.</p><a href="#menu" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[#ff7c50] transition hover:text-[#ff9b79]">Montar meu pedido <ArrowIcon className="h-4 w-4" /></a></div><div className="grid grid-cols-2 gap-3 sm:gap-5"><figure className="reveal-on-scroll group relative col-span-1 aspect-[4/5] overflow-hidden bg-[#201817]"><img src="sooba-sushi.jpg" alt="Sushi, sashimi e hot rolls preparados pelo Sooba" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" /><figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-5 pt-16 text-sm font-semibold text-white">Sushi que chama atenção</figcaption></figure><figure className="reveal-on-scroll delay-1 group relative mt-10 aspect-[4/5] overflow-hidden bg-[#201817] sm:mt-14"><img src="sooba-yakisoba.jpg" alt="Yakisoba com carne, legumes frescos e macarrão preparado pelo Sooba" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" /><figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-5 pt-16 text-sm font-semibold text-white">Yakisoba de verdade</figcaption></figure></div></div></section>
       <MenuSectionView quantities={quantities} setQuantity={setQuantity} activeSection={activeSection} changeSection={changeSection} cartItems={cartItems} subtotal={subtotal} total={total} checkout={checkout} deliveryType={deliveryType} setDeliveryType={setDeliveryType} deliveryFee={deliveryFee} cutlery={cutlery} setCutlery={setCutlery} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} pixCopied={pixCopied} setPixCopied={setPixCopied} storeOpen={storeOpen} emergencyPaused={emergencyPaused} notes={notes} setNotes={setNotes} customerName={customerName} setCustomerName={setCustomerName} customerPhone={customerPhone} setCustomerPhone={setCustomerPhone} location={location} setLocation={setLocation} houseNumber={houseNumber} setHouseNumber={setHouseNumber} requestLocation={requestLocation} locatingGps={locatingGps} soldOutIds={soldOutIds} priceOverrides={priceOverrides} photoOverrides={photoOverrides} customItems={customItems} hiddenIds={hiddenIds} />
@@ -274,9 +280,9 @@ function PhotoCarousel() {
   </section>;
 }
 
-function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void }) {
+function PromoCarousel({ quantities, setQuantity, combos }: { quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void; combos: DailyCombo[] }) {
   const todayDay = new Date().getDay();
-  const todaysCombos = useMemo(() => comboOffers.filter((offer) => offer.days.includes(todayDay)), [todayDay]);
+  const todaysCombos = useMemo(() => combos.filter((offer) => offer.days.includes(todayDay)), [combos, todayDay]);
   const [index, setIndex] = useState(0);
   useEffect(() => {
     if (todaysCombos.length <= 1) return;
@@ -296,7 +302,7 @@ function PromoCarousel({ quantities, setQuantity }: { quantities: Record<string,
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🔥 Vale hoje</span>
-              <span className="text-xs font-bold uppercase tracking-[.12em] text-[#ff9b79]">{combo.daysLabel}</span>
+              <span className="text-xs font-bold uppercase tracking-[.12em] text-[#ff9b79]">{formatDaysLabel(combo.days)}</span>
             </div>
             <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">{combo.name}</h3>
             {combo.description && <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">{combo.description}</p>}

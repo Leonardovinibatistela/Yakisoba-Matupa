@@ -34,12 +34,12 @@ export const menuSections: MenuSection[] = [
     { id: "grande-misto", name: "Misto 750g", price: 47.9, priceLabel: "R$47,90", image: "cardapio/yaki-carne.jpg" },
   ] },
   { id: "yaki-proteico", eyebrow: "Yaki Proteico (sem macarrão)", title: "Yaki Proteico", subtitle: "G com 200g de proteína, M com 150g de proteína", items: [
-    { id: "proteico-frango-g", name: "Frango (G)", price: 33.9, priceLabel: "R$33,90", image: "cardapio/proteico-frango.jpg" },
-    { id: "proteico-frango-m", name: "Frango (M)", price: 23.9, priceLabel: "R$23,90", image: "cardapio/proteico-frango.jpg" },
-    { id: "proteico-carne-g", name: "Carne (G)", price: 47.9, priceLabel: "R$47,90", image: "cardapio/proteico-carne.jpg" },
-    { id: "proteico-carne-m", name: "Carne (M)", price: 35.9, priceLabel: "R$35,90", image: "cardapio/proteico-carne.jpg" },
-    { id: "proteico-misto-g", name: "Misto (G)", price: 37.9, priceLabel: "R$37,90", image: "cardapio/proteico-misto.jpg" },
-    { id: "proteico-misto-m", name: "Misto (M)", price: 27.9, priceLabel: "R$27,90", image: "cardapio/proteico-misto.jpg" },
+    { id: "proteico-frango-g", name: "Yaki Proteico Frango (G)", price: 33.9, priceLabel: "R$33,90", image: "cardapio/proteico-frango.jpg" },
+    { id: "proteico-frango-m", name: "Yaki Proteico Frango (M)", price: 23.9, priceLabel: "R$23,90", image: "cardapio/proteico-frango.jpg" },
+    { id: "proteico-carne-g", name: "Yaki Proteico Carne (G)", price: 47.9, priceLabel: "R$47,90", image: "cardapio/proteico-carne.jpg" },
+    { id: "proteico-carne-m", name: "Yaki Proteico Carne (M)", price: 35.9, priceLabel: "R$35,90", image: "cardapio/proteico-carne.jpg" },
+    { id: "proteico-misto-g", name: "Yaki Proteico Misto (G)", price: 37.9, priceLabel: "R$37,90", image: "cardapio/proteico-misto.jpg" },
+    { id: "proteico-misto-m", name: "Yaki Proteico Misto (M)", price: 27.9, priceLabel: "R$27,90", image: "cardapio/proteico-misto.jpg" },
   ] },
   { id: "bebidas", eyebrow: "Bebidas", title: "Pra acompanhar", items: [
     { id: "coca-lata", name: "Coca-Cola lata", price: 5, priceLabel: "R$5,00", image: "cardapio/coca-lata.jpg" },
@@ -57,10 +57,5 @@ export const addonSections: MenuSection[] = [
   ] },
 ];
 
-export type ComboOffer = MenuItem & { days: number[]; daysLabel: string };
-export const comboOffers: ComboOffer[] = [
-  { id: "combo-individual", name: "Combo Individual", price: 65.9, priceLabel: "R$65,90", description: "1 Yakisoba Médio, 1 porção de Hot Roll, 1 Coca-Cola lata", days: [1], daysLabel: "Segunda-feira", image: "cardapio/combo-individual.jpg" },
-  { id: "combo-filadelfia", name: "Combo Filadélfia", price: 67.9, priceLabel: "R$67,90", description: "1 Uramaki Filadélfia, 1 Hot Roll Filadélfia, 1 Coca-Cola lata", days: [2, 3], daysLabel: "Terça e Quarta-feira", image: "cardapio/combo-filadelfia.jpg" },
-  { id: "combo-duplo", name: "Combo Duplo", price: 76.9, priceLabel: "R$76,90", description: "2 Yakisobas Médios + 1 Coca-Cola 1,5L", days: [3, 4], daysLabel: "Quarta e Quinta", image: "cardapio/combo-duplo.jpg" },
-  { id: "combo-familia", name: "Combo Família", price: 118.9, priceLabel: "R$118,90", description: "1 Yakisoba Grande + 1 Yakisoba Médio + 1 Porção de Hot Roll + 1 Coca-Cola 1,5L", days: [5, 6, 0], daysLabel: "Sexta, Sábado e Domingo", image: "cardapio/combo-familia.jpg" },
-];
+// Os combos da "Promoção do dia" agora são gerenciados pelo admin (ver
+// src/dailyCombos.ts) — não ficam mais fixos aqui no código.

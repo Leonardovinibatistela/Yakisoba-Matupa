@@ -87,6 +87,26 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
 
+    // Combos da "Promoção do dia" — o admin escolhe nome, preço, foto e em
+    // quais dias da semana cada combo aparece. Qualquer visitante do site
+    // precisa ler (pra aparecer a promoção certa), mas só o admin
+    // autenticado escreve.
+    match /dailyCombos/{comboId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 300
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && request.resource.data.price <= 5000
+        && request.resource.data.image is string
+        && request.resource.data.days is list;
+      allow update, delete: if request.auth != null;
+    }
+
     // Tudo que não foi listado acima continua bloqueado por padrão.
   }
 }

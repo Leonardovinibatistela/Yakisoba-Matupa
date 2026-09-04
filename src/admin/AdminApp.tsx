@@ -12,6 +12,7 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
+import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -242,6 +243,90 @@ function Dashboard({ user }: { user: User }) {
         .finally(() => setAddingItem(false));
     if (newItemPhotoFile) {
       uploadImageToCloudinary(newItemPhotoFile).then(({ url }) => create(url)).catch(() => { window.alert("Não foi possível enviar a foto. Tenta de novo."); setAddingItem(false); });
+    } else {
+      create(undefined);
+    }
+  };
+
+  // Combos da "Promoção do dia" — o admin escolhe nome, preço, foto e em
+  // quais dias da semana cada combo aparece no site.
+  const [dailyCombos, setDailyCombosState] = useState<DailyCombo[] | null>(null);
+  useEffect(() => subscribeDailyCombos(setDailyCombosState), []);
+  const [importingCombos, setImportingCombos] = useState(false);
+  const handleImportDefaultCombos = () => {
+    setImportingCombos(true);
+    Promise.all(DEFAULT_DAILY_COMBOS.map((combo) => addDailyCombo(combo)))
+      .catch(() => window.alert("Não foi possível importar os combos. Tenta de novo."))
+      .finally(() => setImportingCombos(false));
+  };
+  const [editingComboId, setEditingComboId] = useState<string | null>(null);
+  const [comboPriceDraft, setComboPriceDraft] = useState("");
+  const [savingComboId, setSavingComboId] = useState<string | null>(null);
+  const startEditComboPrice = (combo: DailyCombo) => { setEditingComboId(combo.id); setComboPriceDraft(combo.price.toFixed(2).replace(".", ",")); };
+  const handleSaveComboPrice = (comboId: string) => {
+    const parsed = Number(comboPriceDraft.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) { window.alert("Digite um preço válido."); return; }
+    setSavingComboId(comboId);
+    updateDailyCombo(comboId, { price: parsed }).then(() => setEditingComboId(null)).catch(() => window.alert("Não foi possível salvar o preço. Tenta de novo.")).finally(() => setSavingComboId(null));
+  };
+  const handleToggleComboDay = (combo: DailyCombo, day: number) => {
+    const nextDays = combo.days.includes(day) ? combo.days.filter((d) => d !== day) : [...combo.days, day].sort((a, b) => a - b);
+    updateDailyCombo(combo.id, { days: nextDays }).catch(() => window.alert("Não foi possível atualizar os dias desse combo. Tenta de novo."));
+  };
+  const [uploadingComboPhotoId, setUploadingComboPhotoId] = useState<string | null>(null);
+  const handleChangeComboPhoto = (comboId: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploadingComboPhotoId(comboId);
+    uploadImageToCloudinary(file)
+      .then(({ url }) => updateDailyCombo(comboId, { image: url }))
+      .catch(() => window.alert("Não foi possível enviar essa foto. Tenta de novo."))
+      .finally(() => setUploadingComboPhotoId(null));
+  };
+  const [removingComboId, setRemovingComboId] = useState<string | null>(null);
+  const handleRemoveCombo = (combo: DailyCombo) => {
+    if (!window.confirm(`Remover "${combo.name}" da Promoção do dia? Essa ação não pode ser desfeita.`)) return;
+    setRemovingComboId(combo.id);
+    removeDailyCombo(combo.id).catch(() => window.alert("Não foi possível remover esse combo. Tenta de novo.")).finally(() => setRemovingComboId(null));
+  };
+  const [newComboName, setNewComboName] = useState("");
+  const [newComboDescription, setNewComboDescription] = useState("");
+  const [newComboPrice, setNewComboPrice] = useState("");
+  const [newComboDays, setNewComboDays] = useState<number[]>([]);
+  const [newComboPhotoFile, setNewComboPhotoFile] = useState<File | null>(null);
+  const [newComboPhotoPreview, setNewComboPhotoPreview] = useState<string | null>(null);
+  const [addingCombo, setAddingCombo] = useState(false);
+  const handlePickNewComboPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setNewComboPhotoFile(file);
+    setNewComboPhotoPreview(URL.createObjectURL(file));
+  };
+  const toggleNewComboDay = (day: number) => setNewComboDays((current) => (current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort((a, b) => a - b)));
+  const resetNewComboForm = () => {
+    setNewComboName("");
+    setNewComboDescription("");
+    setNewComboPrice("");
+    setNewComboDays([]);
+    setNewComboPhotoFile(null);
+    setNewComboPhotoPreview(null);
+  };
+  const handleAddCombo = () => {
+    const name = newComboName.trim();
+    const price = Number(newComboPrice.replace(",", "."));
+    if (!name) { window.alert("Digite o nome do combo."); return; }
+    if (!Number.isFinite(price) || price < 0) { window.alert("Digite um preço válido."); return; }
+    if (newComboDays.length === 0) { window.alert("Escolhe pelo menos um dia da semana pro combo aparecer."); return; }
+    setAddingCombo(true);
+    const create = (image?: string) =>
+      addDailyCombo({ name, description: newComboDescription.trim() || undefined, price, image, days: newComboDays })
+        .then(resetNewComboForm)
+        .catch(() => window.alert("Não foi possível adicionar o combo. Tenta de novo."))
+        .finally(() => setAddingCombo(false));
+    if (newComboPhotoFile) {
+      uploadImageToCloudinary(newComboPhotoFile).then(({ url }) => create(url)).catch(() => { window.alert("Não foi possível enviar a foto. Tenta de novo."); setAddingCombo(false); });
     } else {
       create(undefined);
     }
@@ -579,6 +664,107 @@ function Dashboard({ user }: { user: User }) {
               <button type="button" onClick={handleAddItem} disabled={addingItem} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
                 {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Combos do dia</h2>
+          <p className="mt-1.5 text-sm text-white/50">É a seção "Promoção do dia" do site. Escolhe em quais dias da semana cada combo aparece, o preço e a foto. Se dois combos caírem no mesmo dia, o site revezua sozinho entre eles.</p>
+
+          {dailyCombos === null ? (
+            <p className="mt-4 text-sm text-white/50">Carregando…</p>
+          ) : (
+            <>
+              {dailyCombos.length === 0 && (
+                <div className="mt-4 flex flex-col items-start gap-3 rounded-xl border border-dashed border-white/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-white/50">Nenhum combo cadastrado ainda. Importa os que já estavam no site pra começar a editar.</p>
+                  <button type="button" onClick={handleImportDefaultCombos} disabled={importingCombos} className="shrink-0 rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:opacity-50">
+                    {importingCombos ? "Importando…" : "Importar combos atuais"}
+                  </button>
+                </div>
+              )}
+              <div className="mt-5 space-y-4">
+                {dailyCombos.map((combo) => {
+                  const isEditingComboPrice = editingComboId === combo.id;
+                  const isSavingComboPrice = savingComboId === combo.id;
+                  const isUploadingComboPhoto = uploadingComboPhotoId === combo.id;
+                  const isRemovingCombo = removingComboId === combo.id;
+                  return (
+                    <div key={combo.id} className="flex flex-col gap-3 rounded-xl border border-white/10 p-4 sm:flex-row sm:items-start">
+                      <label className={`relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingComboPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                        {combo.image ? <img src={combo.image} alt={combo.name} className="h-full w-full object-cover" /> : "Sem foto"}
+                        <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingComboPhoto ? "…" : "Trocar"}</span>
+                        <input type="file" accept="image/*" onChange={handleChangeComboPhoto(combo.id)} disabled={isUploadingComboPhoto} className="hidden" />
+                      </label>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-white">{combo.name}</span>
+                          {isEditingComboPrice ? (
+                            <>
+                              <span className="text-xs text-white/50">R$</span>
+                              <input type="text" inputMode="decimal" autoFocus value={comboPriceDraft} onChange={(event) => setComboPriceDraft(event.target.value)} className="w-20 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs text-white outline-none focus:border-[#ff6b32]" />
+                              <button type="button" onClick={() => handleSaveComboPrice(combo.id)} disabled={isSavingComboPrice} className="rounded-full bg-[#ff5a19] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{isSavingComboPrice ? "…" : "Salvar"}</button>
+                              <button type="button" onClick={() => setEditingComboId(null)} className="text-[10px] font-bold text-white/50 hover:text-white">Cancelar</button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs text-white/50">{formatTotal(combo.price)}</span>
+                              <button type="button" onClick={() => startEditComboPrice(combo)} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Editar preço</button>
+                            </>
+                          )}
+                        </div>
+                        {combo.description && <p className="mt-1 text-xs text-white/50">{combo.description}</p>}
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {WEEKDAYS.map((day) => { const active = combo.days.includes(day.value); return (
+                            <button key={day.value} type="button" onClick={() => handleToggleComboDay(combo, day.value)} className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${active ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>{day.short}</button>
+                          ); })}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-white/40">{formatDaysLabel(combo.days)}</p>
+                      </div>
+                      <button type="button" onClick={() => handleRemoveCombo(combo)} disabled={isRemovingCombo} className="shrink-0 text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50 sm:self-start">{isRemovingCombo ? "Removendo…" : "🗑 Remover combo"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Novo combo</p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr]">
+              <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingCombo ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                {newComboPhotoPreview ? <img src={newComboPhotoPreview} alt="Prévia do combo novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
+                <input type="file" accept="image/*" onChange={handlePickNewComboPhoto} disabled={addingCombo} className="hidden" />
+              </label>
+              <div className="grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Nome do combo</label>
+                    <input type="text" value={newComboName} onChange={(event) => setNewComboName(event.target.value)} placeholder="Ex: Combo Terça" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
+                    <input type="text" inputMode="decimal" value={newComboPrice} onChange={(event) => setNewComboPrice(event.target.value)} placeholder="Ex: 67,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Descrição (opcional)</label>
+                  <input type="text" value={newComboDescription} onChange={(event) => setNewComboDescription(event.target.value)} placeholder="Ex: 1 Yakisoba Médio, 1 Hot Roll, 1 Coca lata" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Dias da semana</label>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {WEEKDAYS.map((day) => { const active = newComboDays.includes(day.value); return (
+                      <button key={day.value} type="button" onClick={() => toggleNewComboDay(day.value)} className={`rounded-full border px-2.5 py-1.5 text-[11px] font-bold transition ${active ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>{day.short}</button>
+                    ); })}
+                  </div>
+                </div>
+                <button type="button" onClick={handleAddCombo} disabled={addingCombo} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
+                  {addingCombo ? "Adicionando…" : "+ Adicionar combo"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
