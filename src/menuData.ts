@@ -46,12 +46,15 @@ export const menuSections: MenuSection[] = [
     { id: "grande-misto", name: "Misto 750g", price: 47.9, priceLabel: "R$47,90", image: "cardapio/yaki-carne.jpg" },
   ] },
   { id: "yaki-proteico", eyebrow: "Yaki Proteico (sem macarrão)", title: "Yaki Proteico", subtitle: "G com 200g de proteína, M com 150g de proteína", items: [
-    { id: "proteico-frango-g", name: "Yaki Proteico Frango (G)", price: 33.9, priceLabel: "R$33,90", image: "cardapio/proteico-frango.jpg" },
-    { id: "proteico-frango-m", name: "Yaki Proteico Frango (M)", price: 23.9, priceLabel: "R$23,90", image: "cardapio/proteico-frango.jpg" },
-    { id: "proteico-carne-g", name: "Yaki Proteico Carne (G)", price: 47.9, priceLabel: "R$47,90", image: "cardapio/proteico-carne.jpg" },
-    { id: "proteico-carne-m", name: "Yaki Proteico Carne (M)", price: 35.9, priceLabel: "R$35,90", image: "cardapio/proteico-carne.jpg" },
-    { id: "proteico-misto-g", name: "Yaki Proteico Misto (G)", price: 37.9, priceLabel: "R$37,90", image: "cardapio/proteico-misto.jpg" },
-    { id: "proteico-misto-m", name: "Yaki Proteico Misto (M)", price: 27.9, priceLabel: "R$27,90", image: "cardapio/proteico-misto.jpg" },
+    // Sem foto própria ainda (as fotos "proteico-*.jpg" nunca foram enviadas
+    // pro site — davam erro 404). Assim que o cliente mandar foto real desses
+    // pratos, é só adicionar o campo image de volta com o arquivo certo.
+    { id: "proteico-frango-g", name: "Yaki Proteico Frango (G)", price: 33.9, priceLabel: "R$33,90" },
+    { id: "proteico-frango-m", name: "Yaki Proteico Frango (M)", price: 23.9, priceLabel: "R$23,90" },
+    { id: "proteico-carne-g", name: "Yaki Proteico Carne (G)", price: 47.9, priceLabel: "R$47,90" },
+    { id: "proteico-carne-m", name: "Yaki Proteico Carne (M)", price: 35.9, priceLabel: "R$35,90" },
+    { id: "proteico-misto-g", name: "Yaki Proteico Misto (G)", price: 37.9, priceLabel: "R$37,90" },
+    { id: "proteico-misto-m", name: "Yaki Proteico Misto (M)", price: 27.9, priceLabel: "R$27,90" },
   ] },
   { id: "bebidas", eyebrow: "Bebidas", title: "Pra acompanhar", items: [
     { id: "coca-lata", name: "Coca-Cola lata", price: 5, priceLabel: "R$5,00", image: "cardapio/coca-lata.jpg" },
