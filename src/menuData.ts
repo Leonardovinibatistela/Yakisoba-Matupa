@@ -20,6 +20,8 @@ export const menuSections: MenuSection[] = [
     { id: "sashimi-salmao", name: "Sashimi Salmão (5 unidades)", price: 45.9, priceLabel: "$45,90", image: "cardapio/sashimi-salmao.jpg" },
     { id: "sushi-dog", name: "Sushi Dog (120g de salmão cru)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog.jpg" },
     { id: "sushi-dog-grelhado", name: "Sushi Dog Salmão Grelhado (120g de salmão grelhado)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog-grelhado.jpg" },
+    { id: "copo-felicidade", name: "Copo da Felicidade (salmão cru)", description: "150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg" },
+    { id: "copo-felicidade-grelhado", name: "Copo da Felicidade (salmão grelhado)", description: "150g de salmão grelhado, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg" },
   ] },
   { id: "yaki-medio", eyebrow: "Yakisoba Médio (500g)", title: "Seu yakisoba, do seu jeito", items: [
     { id: "medio-porco", name: "Porco 500g", price: 36.9, priceLabel: "R$36,90", image: "cardapio/yaki-porco.jpg" },
