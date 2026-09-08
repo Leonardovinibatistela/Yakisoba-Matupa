@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 
 // Combos da "Promoção do dia" — o próprio admin escolhe em quais dias da
@@ -12,6 +12,9 @@ export type DailyCombo = {
   priceLabel: string;
   image?: string;
   days: number[]; // 0 = domingo ... 6 = sábado (Date.getDay())
+  // Quando foi criado — usado só pra mostrar a etiqueta "Novo" no site por um
+  // tempo depois de criado (ver App.tsx).
+  addedAt?: string;
 };
 
 const formatPrice = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -54,6 +57,7 @@ export function subscribeDailyCombos(onUpdate: (combos: DailyCombo[]) => void, o
         priceLabel: formatPrice(price),
         image: (data.image as string | undefined) || undefined,
         days: (data.days as number[]) ?? [],
+        addedAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : undefined,
       };
     })),
     onError

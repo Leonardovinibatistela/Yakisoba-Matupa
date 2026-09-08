@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
 // Itens que o próprio cliente (dono do Sooba) adiciona pelo painel admin —
@@ -13,6 +13,9 @@ export type CustomMenuItem = {
   price: number;
   priceLabel: string;
   image?: string;
+  // Quando foi adicionado — usado só pra mostrar a etiqueta "Novo" no site
+  // por um tempo depois de criado (ver App.tsx).
+  addedAt?: string;
 };
 
 const formatPrice = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -33,6 +36,7 @@ export function subscribeCustomItems(onUpdate: (items: CustomMenuItem[]) => void
         price,
         priceLabel: formatPrice(price),
         image: (data.image as string | undefined) || undefined,
+        addedAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : undefined,
       };
     })),
     onError
