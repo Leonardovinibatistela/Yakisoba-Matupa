@@ -295,8 +295,12 @@ function PhotoCarousel() {
 }
 
 function NoveltyHighlight({ quantities, setQuantity }: { quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void }) {
+  const [variant, setVariant] = useState<"cru" | "grelhado">("cru");
   if (!isNoveltyActive()) return null; // depois de NOVELTY_LAST_DAY some sozinho
-  const quantity = quantities["copo-felicidade"] ?? 0;
+  const itemId = variant === "cru" ? "copo-felicidade" : "copo-felicidade-grelhado";
+  const quantity = quantities[itemId] ?? 0;
+  const pillOn = "border-[#ff5a19] bg-[#ff5a19] text-white";
+  const pillOff = "border-white/15 text-white/70 hover:border-white/35";
   return <section className="bg-[#100d0c] pt-14 sm:pt-16" aria-labelledby="novidade-title">
     <div className="mx-auto max-w-7xl px-5 lg:px-8">
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Acabou de chegar</p>
@@ -306,10 +310,14 @@ function NoveltyHighlight({ quantities, setQuantity }: { quantities: Record<stri
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🆕 Novo</span>
             <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">Copo da Felicidade</h3>
-            <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori. Também tem a versão grelhada no cardápio.</p>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={() => setVariant("cru")} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition ${variant === "cru" ? pillOn : pillOff}`}>Salmão cru</button>
+              <button type="button" onClick={() => setVariant("grelhado")} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition ${variant === "grelhado" ? pillOn : pillOff}`}>Salmão grelhado</button>
+            </div>
             <div className="mt-6 flex flex-wrap items-center gap-4">
               <span className="font-display text-2xl font-extrabold tracking-[-.04em] text-[#ff875c]">$49,90</span>
-              {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity("copo-felicidade", next)} label="Copo da Felicidade" dark /> : <button type="button" onClick={() => setQuantity("copo-felicidade", 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
+              {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity(itemId, next)} label="Copo da Felicidade" dark /> : <button type="button" onClick={() => setQuantity(itemId, 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
             </div>
           </div>
           <img src="cardapio/copo-felicidade.jpg" alt="Copo da Felicidade" loading="lazy" className="aspect-square w-full rounded-2xl bg-black/40 object-contain sm:w-64 lg:w-72" />
