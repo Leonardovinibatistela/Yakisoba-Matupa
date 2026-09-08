@@ -42,6 +42,12 @@ const fromDailyCombo = (combo: DailyCombo): MenuItem => ({ id: combo.id, name: c
 // (addedAt = data real de criação no Firestore).
 const NEW_ITEM_WINDOW_DAYS = 14;
 const isRecentlyAdded = (addedAt?: string) => !!addedAt && Date.now() - new Date(addedAt).getTime() < NEW_ITEM_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+// Destaque temporário de lançamento (banner "Novidade" lá em cima, junto com
+// a Promoção do dia). Some sozinho depois do último dia — pra tirar antes da
+// hora, é só mudar NOVELTY_LAST_DAY pra uma data no passado.
+const NOVELTY_LAST_DAY = "2026-09-09"; // "hoje e amanhã" a partir de 08/09/2026
+const isNoveltyActive = () => new Date().toLocaleDateString("en-CA") <= NOVELTY_LAST_DAY;
 const resolveCartLine = (id: string, itemsById: Map<string, MenuItem>, priceOverrides: Record<string, number>, photoOverrides: Record<string, string>): CartLine | null => {
   const parsed = parseAddonCartId(id);
   if (parsed) {
@@ -243,6 +249,7 @@ export default function App() {
     <main>
       <section id="inicio" className="relative isolate flex min-h-[780px] items-end overflow-hidden pt-[72px] sm:min-h-[790px] lg:min-h-[820px]" aria-labelledby="hero-title"><img src="sooba-hero.jpg" alt="Prato de yakisoba e seleção de sushi (uramaki, sashimi de salmão) do Sooba sobre mesa escura" className="absolute inset-0 -z-20 h-full w-full object-cover object-[62%_center] motion-safe:animate-[hero-in_1.2s_ease-out_both]" /><div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(16,13,12,.96)_0%,rgba(16,13,12,.80)_34%,rgba(16,13,12,.24)_75%),linear-gradient(0deg,rgba(16,13,12,.94)_0%,transparent_49%)]" /><div className="hero-glow absolute -left-28 top-36 -z-10 h-72 w-72 rounded-full bg-[#ff4d12]/20 blur-[105px]" /><div className="mx-auto w-full max-w-7xl px-5 pb-16 pt-24 sm:pb-20 lg:px-8 lg:pb-24"><div className="max-w-[655px]"><p className="reveal-up text-xs font-bold uppercase tracking-[0.23em] text-[#ff7c50]">Comida japonesa: sushi e yakisoba delivery em Matupá e Peixoto de Azevedo</p><div className="reveal-up delay-1 mt-4 overflow-hidden"><p className="font-display text-[clamp(4.2rem,11vw,8.8rem)] font-black leading-[.76] tracking-[-0.105em] text-white">SOOBA<span className="text-[#ff5a19]">.</span></p></div><h1 id="hero-title" className="reveal-up delay-2 mt-7 max-w-xl font-display text-[clamp(2.25rem,4.3vw,4.4rem)] font-extrabold leading-[.95] tracking-[-0.07em] text-[#fff9f3]">Seu delivery favorito de sushi e yakisoba.</h1><p className="reveal-up delay-3 mt-5 max-w-md text-base leading-relaxed text-white/70 sm:text-lg">Uramaki, sashimi de salmão e yakisoba, prontos pra pedir. A gente prepara em Matupá, você confirma pelo WhatsApp.</p><div className="reveal-up delay-4 mt-8 flex flex-wrap gap-3"><a href="#menu" className="group inline-flex items-center gap-2 rounded-full bg-[#ff5a19] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_35px_rgba(255,90,25,.24)] transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]">Ver cardápio <ArrowIcon className="h-4 w-4 transition group-hover:translate-x-0.5" /></a><a href="https://wa.me/556692026783" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.07] px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-white/[0.14]"><WhatsAppIcon className="h-4 w-4" /> Pedir no WhatsApp</a></div></div></div><a href="#menu" className="absolute bottom-7 right-6 hidden items-center gap-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/60 lg:flex"><span className="h-px w-9 bg-white/30" /> Explore o cardápio</a></section>
       <section className="border-y border-white/[0.08] bg-[#171211] py-6" aria-label="Destaques do Sooba"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-10 gap-y-3 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 lg:px-8"><span className="text-white/85">Sushi com presença</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Yakisoba feito na hora</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Pedido direto no WhatsApp</span></div></section>
+      <NoveltyHighlight quantities={quantities} setQuantity={setQuantity} />
       <PromoCarousel quantities={quantities} setQuantity={setQuantity} combos={dailyCombos} />
       <PhotoCarousel />
       <section id="sobre" className="bg-[#100d0c] py-20 sm:py-28" aria-labelledby="sobre-title"><div className="mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-[.82fr_1.18fr] lg:items-end lg:gap-24 lg:px-8"><div className="reveal-on-scroll"><p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Do corte à wok</p><h2 id="sobre-title" className="mt-4 max-w-md font-display text-4xl font-extrabold leading-[.96] tracking-[-.065em] text-white sm:text-5xl">Duas vontades. Um pedido memorável.</h2><p className="mt-6 max-w-md text-base leading-relaxed text-white/62">Sushi para quem quer delicadeza. Yakisoba para quem quer intensidade. No Sooba, você escolhe os dois sem abrir mão do sabor.</p><a href="#menu" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[#ff7c50] transition hover:text-[#ff9b79]">Montar meu pedido <ArrowIcon className="h-4 w-4" /></a></div><div className="grid grid-cols-2 gap-3 sm:gap-5"><figure className="reveal-on-scroll group relative col-span-1 aspect-[4/5] overflow-hidden bg-[#201817]"><img src="sooba-sushi.jpg" alt="Sushi, sashimi e hot rolls preparados pelo Sooba" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" /><figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-5 pt-16 text-sm font-semibold text-white">Sushi que chama atenção</figcaption></figure><figure className="reveal-on-scroll delay-1 group relative mt-10 aspect-[4/5] overflow-hidden bg-[#201817] sm:mt-14"><img src="sooba-yakisoba.jpg" alt="Yakisoba com carne, legumes frescos e macarrão preparado pelo Sooba" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" loading="lazy" /><figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-5 pb-5 pt-16 text-sm font-semibold text-white">Yakisoba de verdade</figcaption></figure></div></div></section>
@@ -282,6 +289,31 @@ function PhotoCarousel() {
           <button type="button" onClick={() => goTo(index + 1)} aria-label="Próxima foto" className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white backdrop-blur transition hover:bg-black/70"><ArrowIcon className="h-4 w-4" /></button>
           <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2">{images.map((img, i) => <button key={img.id} type="button" onClick={() => setIndex(i)} aria-label={`Ver foto ${i + 1}`} className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-[#ff5a19]" : "w-2 bg-white/50 hover:bg-white/75"}`} />)}</div>
         </>}
+      </div>
+    </div>
+  </section>;
+}
+
+function NoveltyHighlight({ quantities, setQuantity }: { quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void }) {
+  if (!isNoveltyActive()) return null; // depois de NOVELTY_LAST_DAY some sozinho
+  const quantity = quantities["copo-felicidade"] ?? 0;
+  return <section className="bg-[#100d0c] pt-14 sm:pt-16" aria-labelledby="novidade-title">
+    <div className="mx-auto max-w-7xl px-5 lg:px-8">
+      <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Acabou de chegar</p>
+      <h2 id="novidade-title" className="mt-2 font-display text-3xl font-extrabold tracking-[-.04em] text-white sm:text-4xl">Novidade no cardápio</h2>
+      <div className="relative mt-8 overflow-hidden rounded-3xl border border-[#ff5a19]/25 bg-gradient-to-br from-[#241813] to-[#100d0c] p-6 sm:p-10">
+        <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
+          <div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🆕 Novo</span>
+            <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">Copo da Felicidade</h3>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-white/60">150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori. Também tem a versão grelhada no cardápio.</p>
+            <div className="mt-6 flex flex-wrap items-center gap-4">
+              <span className="font-display text-2xl font-extrabold tracking-[-.04em] text-[#ff875c]">$49,90</span>
+              {quantity > 0 ? <QuantityControl quantity={quantity} onChange={(next) => setQuantity("copo-felicidade", next)} label="Copo da Felicidade" dark /> : <button type="button" onClick={() => setQuantity("copo-felicidade", 1)} className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]"><PlusIcon className="h-3.5 w-3.5" /> Adicionar ao pedido</button>}
+            </div>
+          </div>
+          <img src="cardapio/copo-felicidade.jpg" alt="Copo da Felicidade" loading="lazy" className="aspect-square w-full rounded-2xl bg-black/40 object-contain sm:w-64 lg:w-72" />
+        </div>
       </div>
     </div>
   </section>;
