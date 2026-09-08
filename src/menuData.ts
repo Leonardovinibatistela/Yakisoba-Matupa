@@ -5,7 +5,13 @@
 // mostrar a etiqueta "Novo" por um tempo (ver NEW_ITEM_WINDOW_DAYS no
 // App.tsx). Item sem addedAt nunca mostra a etiqueta. Sempre que acrescentar
 // um item novo direto no código, preencher com a data de hoje.
-export type MenuItem = { id: string; name: string; description?: string; price: number; priceLabel: string; image?: string; addedAt?: string };
+// variantGroup: quando dois (ou mais) itens são a "mesma comida" com uma
+// opção (ex.: cru vs. grelhado), colocar o mesmo texto nesse campo nos dois —
+// eles aparecem juntos como uma única linha no cardápio, com botõezinhos pra
+// escolher a opção, em vez de duas linhas separadas. variantLabel é o texto
+// curto do botão (ex.: "Salmão cru"). O pedido/WhatsApp continua mostrando o
+// nome completo certo da opção escolhida — só a exibição no cardápio muda.
+export type MenuItem = { id: string; name: string; description?: string; price: number; priceLabel: string; image?: string; addedAt?: string; variantGroup?: string; variantLabel?: string };
 export type MenuSection = { id: string; eyebrow: string; title: string; subtitle?: string; items: MenuItem[] };
 
 export const menuSections: MenuSection[] = [
@@ -24,8 +30,8 @@ export const menuSections: MenuSection[] = [
     { id: "sashimi-salmao", name: "Sashimi Salmão (5 unidades)", price: 45.9, priceLabel: "$45,90", image: "cardapio/sashimi-salmao.jpg" },
     { id: "sushi-dog", name: "Sushi Dog (120g de salmão cru)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog.jpg" },
     { id: "sushi-dog-grelhado", name: "Sushi Dog Salmão Grelhado (120g de salmão grelhado)", price: 52.9, priceLabel: "$52,90", image: "cardapio/sushi-dog-grelhado.jpg" },
-    { id: "copo-felicidade", name: "Copo da Felicidade (salmão cru)", description: "150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg", addedAt: "2026-09-08" },
-    { id: "copo-felicidade-grelhado", name: "Copo da Felicidade (salmão grelhado)", description: "150g de salmão grelhado, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg", addedAt: "2026-09-08" },
+    { id: "copo-felicidade", name: "Copo da Felicidade (salmão cru)", description: "150g de salmão, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg", addedAt: "2026-09-08", variantGroup: "copo-felicidade", variantLabel: "Salmão cru" },
+    { id: "copo-felicidade-grelhado", name: "Copo da Felicidade (salmão grelhado)", description: "150g de salmão grelhado, arroz japonês, cream cheese, cebolinha, gergelim e alga nori", price: 49.9, priceLabel: "$49,90", image: "cardapio/copo-felicidade.jpg", addedAt: "2026-09-08", variantGroup: "copo-felicidade", variantLabel: "Salmão grelhado" },
   ] },
   { id: "yaki-medio", eyebrow: "Yakisoba Médio (500g)", title: "Seu yakisoba, do seu jeito", items: [
     { id: "medio-porco", name: "Porco 500g", price: 36.9, priceLabel: "R$36,90", image: "cardapio/yaki-porco.jpg" },
