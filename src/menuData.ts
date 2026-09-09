@@ -16,8 +16,8 @@ export type MenuSection = { id: string; eyebrow: string; title: string; subtitle
 
 export const menuSections: MenuSection[] = [
   { id: "combinados", eyebrow: "Combinados", title: "Combinados", items: [
-    { id: "combo-48", name: "Combinado 48 peças", description: "6 hot roll, 30 sushis sortidos, 4 jou, 8 sashimis", price: 185, priceLabel: "$185", image: "cardapio/combo-48.jpg" },
-    { id: "combo-32", name: "Combinado 32 peças", description: "8 hot roll, 20 sushis sortidos, 4 sashimis", price: 145, priceLabel: "$145", image: "cardapio/combo-32.jpg" },
+    { id: "combo-48", name: "Combinado 52 peças", description: "8 hot roll, 28 sushis sortidos, 4 niguiri, 4 jou, 8 sashimis", price: 220.9, priceLabel: "$220,90", image: "cardapio/combo-48.jpg" },
+    { id: "combo-32", name: "Combinado 35 peças", description: "8 hot roll, 20 sushis sortidos, 4 sashimis, 3 jou", price: 145, priceLabel: "$145", image: "cardapio/combo-32.jpg" },
     { id: "combo-28", name: "Combinado 28 peças", description: "8 hot roll, 20 sushis sortidos", price: 89, priceLabel: "$89", image: "cardapio/combo-28.jpg" },
     { id: "combo-57", name: "Combinado especial 57 peças", description: "8 hot roll, 33 sushis sortidos, 4 jou, 4 uniguiri, 8 sashimi", price: 280, priceLabel: "$280", image: "cardapio/combo-57.png" },
   ] },
