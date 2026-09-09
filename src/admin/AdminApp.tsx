@@ -9,6 +9,7 @@ import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoOverrides";
 import { clearItemName, setItemName, subscribeNameOverrides } from "../nameOverrides";
+import { clearItemDescription, setItemDescription, subscribeDescriptionOverrides } from "../descriptionOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
@@ -166,61 +167,71 @@ function Dashboard({ user }: { user: User }) {
   };
 
   const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
-  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
-  const [priceDraft, setPriceDraft] = useState("");
-  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
   useEffect(() => subscribePriceOverrides(setPriceOverrides), []);
-  const startEditPrice = (itemId: string, currentPrice: number) => {
-    setEditingPriceId(itemId);
-    setPriceDraft(currentPrice.toFixed(2).replace(".", ","));
-  };
-  const handleSavePrice = (itemId: string) => {
-    const parsed = Number(priceDraft.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) { setSaveError("Digite um preço válido."); return; }
-    setSavingPriceId(itemId);
-    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch((error) => setSaveError(`Não foi possível salvar o preço.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
-  };
-  const handleResetPrice = (itemId: string) => {
-    setSavingPriceId(itemId);
-    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch((error) => setSaveError(`Não foi possível restaurar o preço.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
-  };
-
   const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
-  const [editingNameId, setEditingNameId] = useState<string | null>(null);
-  const [nameDraft, setNameDraft] = useState("");
-  const [savingNameId, setSavingNameId] = useState<string | null>(null);
   useEffect(() => subscribeNameOverrides(setNameOverrides), []);
-  const startEditName = (itemId: string, currentName: string) => {
-    setEditingNameId(itemId);
-    setNameDraft(currentName);
-  };
-  const handleSaveName = (itemId: string) => {
-    const trimmed = nameDraft.trim();
-    if (!trimmed) { setSaveError("Digite um nome válido."); return; }
-    setSavingNameId(itemId);
-    setItemName(itemId, trimmed).then(() => setEditingNameId(null)).catch((error) => setSaveError(`Não foi possível salvar o nome.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingNameId(null));
-  };
-  const handleResetName = (itemId: string) => {
-    setSavingNameId(itemId);
-    clearItemName(itemId).catch((error) => setSaveError(`Não foi possível restaurar o nome padrão.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingNameId(null));
-  };
-
+  const [descriptionOverrides, setDescriptionOverrides] = useState<Record<string, string>>({});
+  useEffect(() => subscribeDescriptionOverrides(setDescriptionOverrides), []);
   const [photoOverrides, setPhotoOverrides] = useState<Record<string, string>>({});
-  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
   useEffect(() => subscribePhotoOverrides(setPhotoOverrides), []);
-  const handleChangeItemPhoto = (itemId: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+
+  // Edição unificada: aperta "Editar" uma vez e mexe em nome, preço,
+  // descrição e foto juntos, num formulário só — "Salvar" grava tudo de
+  // uma vez (não precisa apertar editar/salvar item por item de novo).
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [priceDraft, setPriceDraft] = useState("");
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [photoDraftFile, setPhotoDraftFile] = useState<File | null>(null);
+  const [photoDraftPreview, setPhotoDraftPreview] = useState<string | null>(null);
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const startEditItem = (itemId: string, currentName: string, currentPrice: number, currentDescription: string) => {
+    setEditingItemId(itemId);
+    setNameDraft(currentName);
+    setPriceDraft(currentPrice.toFixed(2).replace(".", ","));
+    setDescriptionDraft(currentDescription);
+    setPhotoDraftFile(null);
+    setPhotoDraftPreview(null);
+  };
+  const handlePickPhotoDraft = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setUploadingPhotoId(itemId);
-    uploadImageToCloudinary(file)
-      .then(({ url }) => setItemPhoto(itemId, url))
-      .catch((error) => setSaveError(`Não foi possível enviar essa foto.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`))
-      .finally(() => setUploadingPhotoId(null));
+    setPhotoDraftFile(file);
+    setPhotoDraftPreview(URL.createObjectURL(file));
   };
-  const handleResetItemPhoto = (itemId: string) => {
-    setUploadingPhotoId(itemId);
-    clearItemPhoto(itemId).catch((error) => setSaveError(`Não foi possível restaurar a foto padrão.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setUploadingPhotoId(null));
+  const handleSaveItem = async (itemId: string) => {
+    const trimmedName = nameDraft.trim();
+    if (!trimmedName) { setSaveError("Digite um nome válido."); return; }
+    const parsedPrice = Number(priceDraft.replace(",", "."));
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) { setSaveError("Digite um preço válido."); return; }
+    setSavingItemId(itemId);
+    try {
+      if (photoDraftFile) {
+        const { url } = await uploadImageToCloudinary(photoDraftFile);
+        await setItemPhoto(itemId, url);
+      }
+      await Promise.all([
+        setItemName(itemId, trimmedName),
+        setItemPrice(itemId, parsedPrice),
+        setItemDescription(itemId, descriptionDraft.trim()),
+      ]);
+      setEditingItemId(null);
+    } catch (error: any) {
+      setSaveError(`Não foi possível salvar as alterações.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`);
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+  const handleResetItemAll = async (itemId: string) => {
+    setSavingItemId(itemId);
+    try {
+      await Promise.all([clearItemName(itemId), clearItemPrice(itemId), clearItemDescription(itemId), clearItemPhoto(itemId)]);
+    } catch (error: any) {
+      setSaveError(`Não foi possível restaurar o padrão.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`);
+    } finally {
+      setSavingItemId(null);
+    }
   };
 
   // Itens que o próprio cliente adiciona pelo painel (sabor novo, combinado
@@ -607,7 +618,7 @@ function Dashboard({ user }: { user: User }) {
           <div className="mt-5 space-y-6">
             {menuSections.map((section) => {
               const sectionCustomItems = customItems.filter((item) => item.sectionId === section.id);
-              const sectionItems: { id: string; name: string; price: number; image?: string }[] = [...section.items, ...sectionCustomItems];
+              const sectionItems: { id: string; name: string; description?: string; price: number; image?: string }[] = [...section.items, ...sectionCustomItems];
               const sectionItemIds = sectionItems.map((item) => item.id);
               const allSoldOut = sectionItemIds.every((id) => soldOutIds.has(id));
               const isTogglingSection = togglingSectionId === section.id;
@@ -624,58 +635,59 @@ function Dashboard({ user }: { user: User }) {
                     const isCustom = sectionCustomItems.some((custom) => custom.id === item.id);
                     const isSoldOut = soldOutIds.has(item.id);
                     const isToggling = togglingItemId === item.id;
-                    const hasOverride = priceOverrides[item.id] !== undefined;
-                    const currentPrice = priceOverrides[item.id] ?? item.price;
-                    const isEditingPrice = editingPriceId === item.id;
-                    const isSavingPrice = savingPriceId === item.id;
-                    const currentPhoto = photoOverrides[item.id] ?? item.image;
-                    const isUploadingPhoto = uploadingPhotoId === item.id;
                     const isRemoving = removingItemId === item.id;
                     const isHidden = hiddenIds.has(item.id);
                     const isTogglingHidden = togglingHiddenId === item.id;
-                    const hasNameOverride = nameOverrides[item.id] !== undefined;
+                    const currentPrice = priceOverrides[item.id] ?? item.price;
                     const currentName = nameOverrides[item.id] ?? item.name;
-                    const isEditingName = editingNameId === item.id;
-                    const isSavingName = savingNameId === item.id;
+                    const currentDescription = descriptionOverrides[item.id] ?? item.description ?? "";
+                    const currentPhoto = photoOverrides[item.id] ?? item.image;
+                    const hasAnyOverride = priceOverrides[item.id] !== undefined || nameOverrides[item.id] !== undefined || descriptionOverrides[item.id] !== undefined || photoOverrides[item.id] !== undefined;
+                    const isEditingItem = editingItemId === item.id;
+                    const isSavingItem = savingItemId === item.id;
+
+                    if (isEditingItem) {
+                      return (
+                        <div key={item.id} className="px-4 py-4">
+                          <div className="flex items-start gap-3">
+                            <label className="relative grid h-16 w-16 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60">
+                              {(photoDraftPreview ?? currentPhoto) ? <img src={photoDraftPreview ?? currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : "Sem foto"}
+                              <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">Trocar</span>
+                              <input type="file" accept="image/*" onChange={handlePickPhotoDraft} className="hidden" />
+                            </label>
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <input type="text" autoFocus value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} placeholder="Nome" className="w-full rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm font-bold text-white outline-none focus:border-[#ff6b32]" />
+                              <textarea value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} placeholder="Descrição (opcional)" rows={2} className="w-full resize-none rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-xs text-white/80 outline-none focus:border-[#ff6b32]" />
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-white/50">R$</span>
+                                <input type="text" inputMode="decimal" value={priceDraft} onChange={(event) => setPriceDraft(event.target.value)} className="w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1.5 text-xs text-white outline-none focus:border-[#ff6b32]" />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                            <button type="button" onClick={() => handleSaveItem(item.id)} disabled={isSavingItem} className="rounded-full bg-[#ff5a19] px-4 py-1.5 text-xs font-bold text-white disabled:opacity-50">{isSavingItem ? "Salvando…" : "Salvar"}</button>
+                            <button type="button" onClick={() => setEditingItemId(null)} className="text-xs font-bold text-white/50 hover:text-white">Cancelar</button>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${isHidden ? "opacity-50" : ""}`}>
-                        <label className={`relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
-                          {currentPhoto ? <img src={currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : "Sem foto"}
-                          <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingPhoto ? "…" : "Trocar"}</span>
-                          <input type="file" accept="image/*" onChange={handleChangeItemPhoto(item.id)} disabled={isUploadingPhoto} className="hidden" />
-                        </label>
+                        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-white/[0.04]">
+                          {currentPhoto ? <img src={currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-[9px] font-bold text-white/40">Sem foto</div>}
+                        </div>
                         <div className="min-w-0 flex-1">
-                          {isEditingName ? (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <input type="text" autoFocus value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#ff6b32]" />
-                              <button type="button" onClick={() => handleSaveName(item.id)} disabled={isSavingName} className="rounded-full bg-[#ff5a19] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{isSavingName ? "…" : "Salvar"}</button>
-                              <button type="button" onClick={() => setEditingNameId(null)} className="text-[10px] font-bold text-white/50 hover:text-white">Cancelar</button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{currentName}</span>
-                              {isHidden && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Excluído do site</span>}
-                              <button type="button" onClick={() => startEditName(item.id, currentName)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">Editar nome</button>
-                              {hasNameOverride && <button type="button" onClick={() => handleResetName(item.id)} disabled={isSavingName} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar nome</button>}
-                            </div>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{currentName}</span>
+                            {isHidden && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Excluído do site</span>}
+                            {hasAnyOverride && <span className="rounded-full bg-[#ff5a19]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#ff875c]">Editado</span>}
+                          </div>
+                          {currentDescription && <p className="mt-0.5 max-w-md truncate text-xs text-white/40">{currentDescription}</p>}
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            {isEditingPrice ? (
-                              <>
-                                <span className="text-xs text-white/50">R$</span>
-                                <input type="text" inputMode="decimal" autoFocus value={priceDraft} onChange={(event) => setPriceDraft(event.target.value)} className="w-20 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-xs text-white outline-none focus:border-[#ff6b32]" />
-                                <button type="button" onClick={() => handleSavePrice(item.id)} disabled={isSavingPrice} className="rounded-full bg-[#ff5a19] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{isSavingPrice ? "…" : "Salvar"}</button>
-                                <button type="button" onClick={() => setEditingPriceId(null)} className="text-[10px] font-bold text-white/50 hover:text-white">Cancelar</button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-xs text-white/50">{formatTotal(currentPrice)}{hasOverride && <span className="ml-1 text-white/30">(padrão: {formatTotal(item.price)})</span>}</span>
-                                <button type="button" onClick={() => startEditPrice(item.id, currentPrice)} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Editar preço</button>
-                                {hasOverride && <button type="button" onClick={() => handleResetPrice(item.id)} disabled={isSavingPrice} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
-                                {currentPhoto && <a href={currentPhoto} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Ver foto</a>}
-                                {currentPhoto && photoOverrides[item.id] !== undefined && <button type="button" onClick={() => handleResetItemPhoto(item.id)} disabled={isUploadingPhoto} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar foto padrão</button>}
-                              </>
-                            )}
+                            <span className="text-xs text-white/50">{formatTotal(currentPrice)}</span>
+                            <button type="button" onClick={() => startEditItem(item.id, currentName, currentPrice, currentDescription)} className="text-[10px] font-bold text-[#ff875c] underline decoration-dotted underline-offset-2 hover:text-white">Editar</button>
+                            {hasAnyOverride && <button type="button" onClick={() => handleResetItemAll(item.id)} disabled={isSavingItem} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5">
