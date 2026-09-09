@@ -16,10 +16,17 @@ export function subscribePriceOverrides(onUpdate: (prices: Record<string, number
 
 /** Define um preço novo pra um item. Só o admin autenticado pode chamar isso. */
 export async function setItemPrice(itemId: string, price: number): Promise<void> {
-  await setDoc(priceOverridesRef, { [`prices.${itemId}`]: price }, { merge: true });
+  // Importante: o objeto aninhado ({ prices: { [itemId]: price } }) é o
+  // jeito certo de fazer merge só numa chave do mapa "prices" — uma chave
+  // com ponto direto no nome (ex.: "prices.combo-48") NÃO funciona com
+  // setDoc (só o updateDoc entende ponto como caminho aninhado); isso criava
+  // um campo literal com ponto no nome, que a leitura nunca olhava — era
+  // exatamente por isso que salvar preço "não fazia nada" (a escrita ia pro
+  // Firestore certinha, só que pro lugar errado dentro do documento).
+  await setDoc(priceOverridesRef, { prices: { [itemId]: price } }, { merge: true });
 }
 
 /** Volta o item pro preço padrão do cardápio (remove o ajuste manual). */
 export async function clearItemPrice(itemId: string): Promise<void> {
-  await setDoc(priceOverridesRef, { [`prices.${itemId}`]: deleteField() }, { merge: true });
+  await setDoc(priceOverridesRef, { prices: { [itemId]: deleteField() } }, { merge: true });
 }

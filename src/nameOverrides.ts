@@ -17,10 +17,12 @@ export function subscribeNameOverrides(onUpdate: (names: Record<string, string>)
 
 /** Define um nome novo pra um item. Só o admin autenticado pode chamar isso. */
 export async function setItemName(itemId: string, name: string): Promise<void> {
-  await setDoc(nameOverridesRef, { [`names.${itemId}`]: name }, { merge: true });
+  // Objeto aninhado, não chave com ponto — ver comentário em setItemPrice
+  // (priceOverrides.ts) pra entender por que isso importa.
+  await setDoc(nameOverridesRef, { names: { [itemId]: name } }, { merge: true });
 }
 
 /** Volta o item pro nome padrão (remove o ajuste manual). */
 export async function clearItemName(itemId: string): Promise<void> {
-  await setDoc(nameOverridesRef, { [`names.${itemId}`]: deleteField() }, { merge: true });
+  await setDoc(nameOverridesRef, { names: { [itemId]: deleteField() } }, { merge: true });
 }

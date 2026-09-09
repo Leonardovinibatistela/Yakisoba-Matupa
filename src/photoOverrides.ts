@@ -16,10 +16,15 @@ export function subscribePhotoOverrides(onUpdate: (images: Record<string, string
 
 /** Define uma foto nova pra um item. Só o admin autenticado pode chamar isso. */
 export async function setItemPhoto(itemId: string, url: string): Promise<void> {
-  await setDoc(photoOverridesRef, { [`images.${itemId}`]: url }, { merge: true });
+  // Importante: o objeto aninhado ({ images: { [itemId]: url } }) é o jeito
+  // certo de fazer merge só numa chave do mapa "images" — uma chave com
+  // ponto direto no nome (ex.: "images.combo-48") NÃO funciona com setDoc
+  // (só o updateDoc entende ponto como caminho aninhado); cria um campo
+  // literal com ponto no nome, que ninguém nunca lê.
+  await setDoc(photoOverridesRef, { images: { [itemId]: url } }, { merge: true });
 }
 
 /** Volta o item pra foto padrão do cardápio (remove o ajuste manual). */
 export async function clearItemPhoto(itemId: string): Promise<void> {
-  await setDoc(photoOverridesRef, { [`images.${itemId}`]: deleteField() }, { merge: true });
+  await setDoc(photoOverridesRef, { images: { [itemId]: deleteField() } }, { merge: true });
 }
