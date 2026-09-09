@@ -90,6 +90,10 @@ function LoginScreen() {
 function Dashboard({ user }: { user: User }) {
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
+  // Aviso fixo (não some sozinho) pra erro ao salvar preço/nome/foto — um
+  // alert() pode passar despercebido (some rápido, ou o navegador bloqueia),
+  // então isso fica na tela até a pessoa fechar, com o erro real do Firebase.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [pickedDate, setPickedDate] = useState(() => toDateInputValue(new Date()));
   const [pickedDayOrders, setPickedDayOrders] = useState<OrderRecord[] | null>(null);
   const [pickedMonthOrders, setPickedMonthOrders] = useState<OrderRecord[] | null>(null);
@@ -139,7 +143,7 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeSoldOutItems(setSoldOutIds), []);
   const handleToggleSoldOut = (itemId: string, currentlySoldOut: boolean) => {
     setTogglingItemId(itemId);
-    setItemSoldOut(itemId, !currentlySoldOut).catch(() => window.alert("Não foi possível atualizar esse item. Tenta de novo.")).finally(() => setTogglingItemId(null));
+    setItemSoldOut(itemId, !currentlySoldOut).catch((error) => setSaveError(`Não foi possível atualizar esse item.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setTogglingItemId(null));
   };
 
   // Itens "de fábrica" (menuData.ts) que o admin excluiu do site — não apaga
@@ -172,13 +176,13 @@ function Dashboard({ user }: { user: User }) {
   };
   const handleSavePrice = (itemId: string) => {
     const parsed = Number(priceDraft.replace(",", "."));
-    if (!Number.isFinite(parsed) || parsed < 0) { window.alert("Digite um preço válido."); return; }
+    if (!Number.isFinite(parsed) || parsed < 0) { setSaveError("Digite um preço válido."); return; }
     setSavingPriceId(itemId);
-    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch((error) => window.alert(`Não foi possível salvar o preço. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
+    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch((error) => setSaveError(`Não foi possível salvar o preço.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
   };
   const handleResetPrice = (itemId: string) => {
     setSavingPriceId(itemId);
-    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch((error) => window.alert(`Não foi possível restaurar o preço. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
+    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch((error) => setSaveError(`Não foi possível restaurar o preço.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
   };
 
   const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
@@ -192,13 +196,13 @@ function Dashboard({ user }: { user: User }) {
   };
   const handleSaveName = (itemId: string) => {
     const trimmed = nameDraft.trim();
-    if (!trimmed) { window.alert("Digite um nome válido."); return; }
+    if (!trimmed) { setSaveError("Digite um nome válido."); return; }
     setSavingNameId(itemId);
-    setItemName(itemId, trimmed).then(() => setEditingNameId(null)).catch((error) => window.alert(`Não foi possível salvar o nome. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingNameId(null));
+    setItemName(itemId, trimmed).then(() => setEditingNameId(null)).catch((error) => setSaveError(`Não foi possível salvar o nome.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingNameId(null));
   };
   const handleResetName = (itemId: string) => {
     setSavingNameId(itemId);
-    clearItemName(itemId).catch((error) => window.alert(`Não foi possível restaurar o nome padrão.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingNameId(null));
+    clearItemName(itemId).catch((error) => setSaveError(`Não foi possível restaurar o nome padrão.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setSavingNameId(null));
   };
 
   const [photoOverrides, setPhotoOverrides] = useState<Record<string, string>>({});
@@ -211,12 +215,12 @@ function Dashboard({ user }: { user: User }) {
     setUploadingPhotoId(itemId);
     uploadImageToCloudinary(file)
       .then(({ url }) => setItemPhoto(itemId, url))
-      .catch(() => window.alert("Não foi possível enviar essa foto. Tenta de novo."))
+      .catch((error) => setSaveError(`Não foi possível enviar essa foto.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`))
       .finally(() => setUploadingPhotoId(null));
   };
   const handleResetItemPhoto = (itemId: string) => {
     setUploadingPhotoId(itemId);
-    clearItemPhoto(itemId).catch(() => window.alert("Não foi possível restaurar a foto padrão.")).finally(() => setUploadingPhotoId(null));
+    clearItemPhoto(itemId).catch((error) => setSaveError(`Não foi possível restaurar a foto padrão.\n\nDetalhe do erro: ${error?.code ? `[${error.code}] ` : ""}${error?.message ?? error}`)).finally(() => setUploadingPhotoId(null));
   };
 
   // Itens que o próprio cliente adiciona pelo painel (sabor novo, combinado
@@ -429,6 +433,7 @@ function Dashboard({ user }: { user: User }) {
 
   return (
     <div className="min-h-screen bg-[#100d0c] px-5 py-8 text-white sm:px-8">
+      {saveError && <div className="sticky top-3 z-50 mx-auto mb-5 max-w-5xl rounded-2xl border border-red-400/40 bg-[#2a1210] p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-line text-sm font-bold text-red-300">⚠️ {saveError}</p><button type="button" onClick={() => setSaveError(null)} className="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs font-bold text-white/70 hover:border-white/35 hover:text-white">Fechar</button></div></div>}
       <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div>
