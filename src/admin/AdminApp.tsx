@@ -8,6 +8,7 @@ import { menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoOverrides";
+import { clearItemName, setItemName, subscribeNameOverrides } from "../nameOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
@@ -173,11 +174,31 @@ function Dashboard({ user }: { user: User }) {
     const parsed = Number(priceDraft.replace(",", "."));
     if (!Number.isFinite(parsed) || parsed < 0) { window.alert("Digite um preço válido."); return; }
     setSavingPriceId(itemId);
-    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch(() => window.alert("Não foi possível salvar o preço. Tenta de novo.")).finally(() => setSavingPriceId(null));
+    setItemPrice(itemId, parsed).then(() => setEditingPriceId(null)).catch((error) => window.alert(`Não foi possível salvar o preço. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
   };
   const handleResetPrice = (itemId: string) => {
     setSavingPriceId(itemId);
-    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch(() => window.alert("Não foi possível restaurar o preço. Tenta de novo.")).finally(() => setSavingPriceId(null));
+    clearItemPrice(itemId).then(() => setEditingPriceId(null)).catch((error) => window.alert(`Não foi possível restaurar o preço. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingPriceId(null));
+  };
+
+  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>({});
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingNameId, setSavingNameId] = useState<string | null>(null);
+  useEffect(() => subscribeNameOverrides(setNameOverrides), []);
+  const startEditName = (itemId: string, currentName: string) => {
+    setEditingNameId(itemId);
+    setNameDraft(currentName);
+  };
+  const handleSaveName = (itemId: string) => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) { window.alert("Digite um nome válido."); return; }
+    setSavingNameId(itemId);
+    setItemName(itemId, trimmed).then(() => setEditingNameId(null)).catch((error) => window.alert(`Não foi possível salvar o nome. Tenta de novo.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingNameId(null));
+  };
+  const handleResetName = (itemId: string) => {
+    setSavingNameId(itemId);
+    clearItemName(itemId).catch((error) => window.alert(`Não foi possível restaurar o nome padrão.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setSavingNameId(null));
   };
 
   const [photoOverrides, setPhotoOverrides] = useState<Record<string, string>>({});
@@ -607,16 +628,32 @@ function Dashboard({ user }: { user: User }) {
                     const isRemoving = removingItemId === item.id;
                     const isHidden = hiddenIds.has(item.id);
                     const isTogglingHidden = togglingHiddenId === item.id;
+                    const hasNameOverride = nameOverrides[item.id] !== undefined;
+                    const currentName = nameOverrides[item.id] ?? item.name;
+                    const isEditingName = editingNameId === item.id;
+                    const isSavingName = savingNameId === item.id;
                     return (
                       <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${isHidden ? "opacity-50" : ""}`}>
                         <label className={`relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
-                          {currentPhoto ? <img src={currentPhoto} alt={item.name} className="h-full w-full object-cover" /> : "Sem foto"}
+                          {currentPhoto ? <img src={currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : "Sem foto"}
                           <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingPhoto ? "…" : "Trocar"}</span>
                           <input type="file" accept="image/*" onChange={handleChangeItemPhoto(item.id)} disabled={isUploadingPhoto} className="hidden" />
                         </label>
                         <div className="min-w-0 flex-1">
-                          <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{item.name}</span>
-                          {isHidden && <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Excluído do site</span>}
+                          {isEditingName ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <input type="text" autoFocus value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-2 py-1 text-sm font-bold text-white outline-none focus:border-[#ff6b32]" />
+                              <button type="button" onClick={() => handleSaveName(item.id)} disabled={isSavingName} className="rounded-full bg-[#ff5a19] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{isSavingName ? "…" : "Salvar"}</button>
+                              <button type="button" onClick={() => setEditingNameId(null)} className="text-[10px] font-bold text-white/50 hover:text-white">Cancelar</button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`text-sm font-bold ${isSoldOut ? "text-white/40 line-through" : "text-white"}`}>{currentName}</span>
+                              {isHidden && <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">Excluído do site</span>}
+                              <button type="button" onClick={() => startEditName(item.id, currentName)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">Editar nome</button>
+                              {hasNameOverride && <button type="button" onClick={() => handleResetName(item.id)} disabled={isSavingName} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar nome</button>}
+                            </div>
+                          )}
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             {isEditingPrice ? (
                               <>
@@ -630,6 +667,7 @@ function Dashboard({ user }: { user: User }) {
                                 <span className="text-xs text-white/50">{formatTotal(currentPrice)}{hasOverride && <span className="ml-1 text-white/30">(padrão: {formatTotal(item.price)})</span>}</span>
                                 <button type="button" onClick={() => startEditPrice(item.id, currentPrice)} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Editar preço</button>
                                 {hasOverride && <button type="button" onClick={() => handleResetPrice(item.id)} disabled={isSavingPrice} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
+                                {currentPhoto && <a href={currentPhoto} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white">Ver foto</a>}
                                 {currentPhoto && photoOverrides[item.id] !== undefined && <button type="button" onClick={() => handleResetItemPhoto(item.id)} disabled={isUploadingPhoto} className="text-[10px] font-bold text-white/50 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar foto padrão</button>}
                               </>
                             )}
