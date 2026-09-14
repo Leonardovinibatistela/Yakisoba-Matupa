@@ -497,7 +497,7 @@ function Dashboard({ user }: { user: User }) {
           {pickedLoading ? (
             <p className="mt-4 text-sm text-white/50">Buscando…</p>
           ) : pickedDayOrders && pickedMonthOrders ? (
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{pickedDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
                 <p className="mt-2 font-display text-2xl font-extrabold">{formatTotal(sumRevenue(pickedDayOrders))}</p>
@@ -508,7 +508,7 @@ function Dashboard({ user }: { user: User }) {
                 <p className="mt-2 font-display text-2xl font-extrabold">{formatTotal(sumRevenue(pickedMonthOrders))}</p>
                 <p className="mt-1 text-xs text-white/55"><strong className="text-white">{pickedMonthOrders.length}</strong> pedido{pickedMonthOrders.length === 1 ? "" : "s"} nesse mês</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:col-span-2">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 md:col-span-2">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos em {pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
                 {pickedTop3.length === 0 ? (
                   <p className="mt-3 text-sm text-white/50">Sem pedidos nesse mês.</p>
