@@ -15,6 +15,7 @@ import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
+import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -129,6 +130,37 @@ function Dashboard({ user }: { user: User }) {
     if (!window.confirm(`Apagar o Pedido #${order.orderNumber}? Essa ação não pode ser desfeita.`)) return;
     setDeletingOrderId(order.id);
     deleteOrder(order.id).catch(() => window.alert("Não foi possível apagar esse pedido. Tenta de novo.")).finally(() => setDeletingOrderId(null));
+  };
+
+  // Impressora térmica (Bluetooth) — conecta uma vez, aí dá pra imprimir
+  // pedido por pedido (botão) ou ligar a impressão automática pros que
+  // chegarem novos. Só funciona no Chrome (não funciona no iPhone/Safari).
+  const [printerConn, setPrinterConn] = useState<PrinterConnection | null>(null);
+  const [connectingPrinter, setConnectingPrinter] = useState(false);
+  const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+  const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem("sooba_auto_print") === "1"; } catch { return false; } });
+  const seenOrderIdsRef = useRef<Set<string> | null>(null);
+  const handleConnectPrinter = () => {
+    setConnectingPrinter(true);
+    connectPrinter()
+      .then((conn) => {
+        setPrinterConn(conn);
+        conn.device.addEventListener("gattserverdisconnected", () => setPrinterConn(null));
+      })
+      .catch((error) => setSaveError(`Não foi possível conectar na impressora.\n\nDetalhe do erro: ${error?.message ?? error}`))
+      .finally(() => setConnectingPrinter(false));
+  };
+  const handlePrintOrder = (order: OrderRecord) => {
+    if (!printerConn) { setSaveError("Conecta a impressora primeiro (botão \"Conectar impressora\" aqui em cima)."); return; }
+    setPrintingOrderId(order.id);
+    printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não foi possível imprimir o Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setPrintingOrderId(null));
+  };
+  const handleToggleAutoPrint = () => {
+    setAutoPrint((current) => {
+      const next = !current;
+      try { localStorage.setItem("sooba_auto_print", next ? "1" : "0"); } catch { /* localStorage indisponível, tudo bem seguir sem salvar */ }
+      return next;
+    });
   };
 
   const [emergencyPaused, setEmergencyPausedState] = useState(false);
@@ -387,6 +419,24 @@ function Dashboard({ user }: { user: User }) {
     return unsubscribe;
   }, []);
 
+  // Impressão automática: na primeira carga só "marca como visto" os
+  // pedidos que já existiam (não reimprime o dia inteiro ao conectar) —
+  // só pedidos que chegarem DEPOIS disso, com a impressora ligada e a
+  // opção marcada, saem impressos sozinhos.
+  useEffect(() => {
+    if (!orders) return;
+    if (seenOrderIdsRef.current === null) {
+      seenOrderIdsRef.current = new Set(orders.map((order) => order.id));
+      return;
+    }
+    const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
+    newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));
+    if (!autoPrint || !printerConn || newOrders.length === 0) return;
+    newOrders.forEach((order) => {
+      printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
+    });
+  }, [orders, autoPrint, printerConn]);
+
   useEffect(() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
     if (!year || !month || !day) return;
@@ -526,6 +576,21 @@ function Dashboard({ user }: { user: User }) {
               </div>
             </div>
           ) : null}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            {printerConn ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-300">🖨️ Impressora conectada{printerConn.device.name ? `: ${printerConn.device.name}` : ""}</span>
+            ) : (
+              <button type="button" onClick={handleConnectPrinter} disabled={connectingPrinter} className="rounded-full border border-white/15 px-3.5 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
+                {connectingPrinter ? "Conectando…" : "🖨️ Conectar impressora"}
+              </button>
+            )}
+            <label className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${printerConn ? "text-white/70" : "text-white/30"}`}>
+              <input type="checkbox" checked={autoPrint} onChange={handleToggleAutoPrint} disabled={!printerConn} className="h-3.5 w-3.5" />
+              Imprimir pedidos novos automaticamente
+            </label>
+          </div>
+
           {!pickedLoading && pickedDayOrders && pickedDayOrders.length > 0 && (() => {
             const duplicateSuspects = findDuplicateSuspects(pickedDayOrders);
             return (
@@ -550,6 +615,9 @@ function Dashboard({ user }: { user: User }) {
                             </span>
                             <div className="flex shrink-0 items-center gap-2">
                               <span className={`text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                              {printerConn && <button type="button" onClick={() => handlePrintOrder(order)} disabled={printingOrderId === order.id} aria-label={`Imprimir Pedido #${order.orderNumber}`} className="rounded-full border border-white/15 px-2 py-1 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
+                                {printingOrderId === order.id ? "Imprimindo…" : "🖨️ Imprimir"}
+                              </button>}
                               <button type="button" onClick={() => handleDeleteOrder(order)} disabled={deletingOrderId === order.id} aria-label={`Apagar Pedido #${order.orderNumber}`} className="rounded-full border border-red-400/30 px-2 py-1 text-[10px] font-bold text-red-300 transition hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-wait disabled:opacity-50">
                                 {deletingOrderId === order.id ? "Apagando…" : "🗑 Apagar"}
                               </button>
