@@ -497,18 +497,18 @@ function Dashboard({ user }: { user: User }) {
           {pickedLoading ? (
             <p className="mt-4 text-sm text-white/50">Buscando…</p>
           ) : pickedDayOrders && pickedMonthOrders ? (
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{pickedDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
                 <p className="mt-2 font-display text-2xl font-extrabold">{formatTotal(sumRevenue(pickedDayOrders))}</p>
                 <p className="mt-1 text-xs text-white/55"><strong className="text-white">{pickedDayOrders.length}</strong> pedido{pickedDayOrders.length === 1 ? "" : "s"} nesse dia</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })} (mês inteiro)</p>
                 <p className="mt-2 font-display text-2xl font-extrabold">{formatTotal(sumRevenue(pickedMonthOrders))}</p>
                 <p className="mt-1 text-xs text-white/55"><strong className="text-white">{pickedMonthOrders.length}</strong> pedido{pickedMonthOrders.length === 1 ? "" : "s"} nesse mês</p>
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 md:col-span-2">
+              <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4 md:col-span-2">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos em {pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
                 {pickedTop3.length === 0 ? (
                   <p className="mt-3 text-sm text-white/50">Sem pedidos nesse mês.</p>
@@ -603,15 +603,15 @@ function Dashboard({ user }: { user: User }) {
           {!carouselImages ? (
             <p className="mt-4 text-sm text-white/50">Carregando…</p>
           ) : (
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {carouselImages.map((image) => (
-                <div key={image.id} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
+                <div key={image.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
                   <img src={image.url} alt="Foto do carrossel" className="h-40 w-full object-cover" />
                   <button type="button" onClick={() => handleRemoveImage(image.id)} className="flex w-full items-center justify-center gap-1.5 border-t border-white/10 py-2.5 text-xs font-bold text-red-400 transition hover:bg-red-500/10">Remover</button>
                 </div>
               ))}
               {carouselImages.length < CAROUSEL_MAX_IMAGES && (
-                <label className={`flex h-40 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 text-sm font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${uploading ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+                <label className={`flex h-40 min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 text-sm font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${uploading ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
                   <PlusIconAdmin />
                   {uploading ? "Enviando…" : "Adicionar foto"}
                   <input type="file" accept="image/*" onChange={handleUploadImage} disabled={uploading} className="hidden" />
@@ -725,20 +725,20 @@ function Dashboard({ user }: { user: User }) {
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>
           <p className="mt-1.5 text-sm text-white/50">Um sabor novo de yakisoba, um combinado novo — o que for. Escolhe a seção, preenche e já aparece no site na hora.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-[auto_1fr]">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
             <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingItem ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
               {newItemPhotoPreview ? <img src={newItemPhotoPreview} alt="Prévia do item novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
               <input type="file" accept="image/*" onChange={handlePickNewItemPhoto} disabled={addingItem} className="hidden" />
             </label>
-            <div className="grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+            <div className="grid min-w-0 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="min-w-0">
                   <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Seção</label>
                   <select value={newItemSectionId} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
                     {menuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
                   <input type="text" inputMode="decimal" value={newItemPrice} onChange={(event) => setNewItemPrice(event.target.value)} placeholder="Ex: 36,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
                 </div>
@@ -824,18 +824,18 @@ function Dashboard({ user }: { user: User }) {
 
           <div className="mt-6 border-t border-white/10 pt-5">
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Novo combo</p>
-            <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr]">
+            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
               <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingCombo ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
                 {newComboPhotoPreview ? <img src={newComboPhotoPreview} alt="Prévia do combo novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
                 <input type="file" accept="image/*" onChange={handlePickNewComboPhoto} disabled={addingCombo} className="hidden" />
               </label>
-              <div className="grid gap-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
+              <div className="grid min-w-0 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
                     <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Nome do combo</label>
                     <input type="text" value={newComboName} onChange={(event) => setNewComboName(event.target.value)} placeholder="Ex: Combo Terça" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
                     <input type="text" inputMode="decimal" value={newComboPrice} onChange={(event) => setNewComboPrice(event.target.value)} placeholder="Ex: 67,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
                   </div>
@@ -872,12 +872,12 @@ function PeriodSection({ title, orders, monthLabel }: { title: string; orders: O
   return (
     <div className="mt-8">
       <h2 className="font-display text-xl font-extrabold tracking-[-.03em]">{title}{monthLabel ? <span className="ml-2 text-sm font-medium text-white/40">({monthLabel})</span> : null}</h2>
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_300px]">
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
           <StatCard label="Faturamento" value={formatTotal(revenue)} />
           <StatCard label="Pedidos" value={String(orders.length)} highlight />
         </div>
-        <div className="rounded-2xl border border-white/10 bg-[#171211] p-5">
+        <div className="min-w-0 rounded-2xl border border-white/10 bg-[#171211] p-5">
           <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos</p>
           {top3.length === 0 ? (
             <p className="mt-3 text-sm text-white/50">Sem pedidos ainda.</p>
@@ -900,7 +900,7 @@ function PeriodSection({ title, orders, monthLabel }: { title: string; orders: O
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={`rounded-2xl border p-5 ${highlight ? "border-[#ff5a19]/40 bg-[#ff5a19]/10" : "border-white/10 bg-[#171211]"}`}>
+    <div className={`min-w-0 rounded-2xl border p-5 ${highlight ? "border-[#ff5a19]/40 bg-[#ff5a19]/10" : "border-white/10 bg-[#171211]"}`}>
       <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{label}</p>
       <p className={`mt-2 font-display text-3xl font-extrabold tracking-[-.03em] ${highlight ? "text-[#ff875c]" : "text-white"}`}>{value}</p>
     </div>

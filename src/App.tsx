@@ -396,7 +396,7 @@ function NoveltyHighlight({ quantities, setQuantity }: { quantities: Record<stri
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Acabou de chegar</p>
       <h2 id="novidade-title" className="mt-2 font-display text-3xl font-extrabold tracking-[-.04em] text-white sm:text-4xl">Novidade no cardápio</h2>
       <div className="relative mt-8 overflow-hidden rounded-3xl border border-[#ff5a19]/25 bg-gradient-to-br from-[#241813] to-[#100d0c] p-6 sm:p-10">
-        <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
+        <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[1fr_auto]">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🆕 Novo</span>
             <h3 className="mt-3 font-display text-2xl font-extrabold tracking-[-.03em] text-white sm:text-3xl">Copo da Felicidade</h3>
@@ -435,7 +435,7 @@ function PromoCarousel({ quantities, setQuantity, combos }: { quantities: Record
       <p className="text-xs font-bold uppercase tracking-[.22em] text-[#ff7548]">Combo fixo de hoje</p>
       <h2 id="combos-title" className="mt-2 font-display text-3xl font-extrabold tracking-[-.04em] text-white sm:text-4xl">Promoção do dia</h2>
       <div className="relative mt-8 overflow-hidden rounded-3xl border border-[#ff5a19]/25 bg-gradient-to-br from-[#241813] to-[#100d0c] p-6 sm:p-10">
-        <div className="grid items-center gap-8 lg:grid-cols-[1fr_auto]">
+        <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[1fr_auto]">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#ff5a19] px-3 py-1 text-[11px] font-black uppercase tracking-[.1em] text-white">🔥 Vale hoje</span>
