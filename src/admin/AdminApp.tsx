@@ -517,7 +517,7 @@ function Dashboard({ user }: { user: User }) {
                     {pickedTop3.map((item, index) => (
                       <div key={item.name} className="flex items-center gap-3">
                         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ff5a19]/15 text-xs font-extrabold text-[#ff875c]">{index + 1}º</span>
-                        <span className="flex-1 truncate text-sm font-bold">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
                         <span className="shrink-0 text-xs text-white/55">{item.quantity}x</span>
                       </div>
                     ))}
@@ -886,7 +886,7 @@ function PeriodSection({ title, orders, monthLabel }: { title: string; orders: O
               {top3.map((item, index) => (
                 <div key={item.name} className="flex items-center gap-3">
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ff5a19]/15 text-xs font-extrabold text-[#ff875c]">{index + 1}º</span>
-                  <span className="flex-1 truncate text-sm font-bold">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
                   <span className="shrink-0 text-xs text-white/55">{item.quantity}x</span>
                 </div>
               ))}
