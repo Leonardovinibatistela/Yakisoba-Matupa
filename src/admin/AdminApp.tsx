@@ -19,6 +19,16 @@ import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo,
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
+// Abas do painel — só organiza como as coisas aparecem na tela (menos
+// rolagem, cada assunto na sua página). Não mexe em nenhum dado.
+type AdminTab = "visao" | "cardapio" | "combos" | "fotos";
+const ADMIN_TABS: { id: AdminTab; label: string }[] = [
+  { id: "visao", label: "Visão geral" },
+  { id: "cardapio", label: "Cardápio" },
+  { id: "combos", label: "Combos do dia" },
+  { id: "fotos", label: "Fotos" },
+];
+
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
 // do MESMO telefone, feitos poucos minutos um do outro, provavelmente são o
 // mesmo cliente tentando de novo (ex.: internet fraca). Clientes diferentes
@@ -89,6 +99,7 @@ function LoginScreen() {
 }
 
 function Dashboard({ user }: { user: User }) {
+  const [activeTab, setActiveTab] = useState<AdminTab>("visao");
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
   // Aviso fixo (não some sozinho) pra erro ao salvar preço/nome/foto — um
@@ -446,34 +457,31 @@ function Dashboard({ user }: { user: User }) {
     <div className="min-h-screen bg-[#100d0c] px-5 py-8 text-white sm:px-8">
       {saveError && <div className="sticky top-3 z-50 mx-auto mb-5 max-w-5xl rounded-2xl border border-red-400/40 bg-[#2a1210] p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-line text-sm font-bold text-red-300">⚠️ {saveError}</p><button type="button" onClick={() => setSaveError(null)} className="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs font-bold text-white/70 hover:border-white/35 hover:text-white">Fechar</button></div></div>}
       <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Sooba · Painel</p>
             <h1 className="mt-1 font-display text-3xl font-extrabold tracking-[-.045em]">Olá, {user.email}</h1>
           </div>
-          <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
-        </div>
-
-        <div className={`mt-6 flex items-center justify-between gap-4 rounded-2xl border p-5 ${emergencyPaused ? "border-red-400/50 bg-red-500/10" : "border-white/10 bg-[#171211]"}`}>
-          <div>
-            <p className={`text-sm font-bold ${emergencyPaused ? "text-red-300" : "text-white"}`}>{emergencyPaused ? "⏸️ Pedidos pausados agora" : "Pedidos funcionando normal"}</p>
-            <p className="mt-0.5 text-xs text-white/50">Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
+              {togglingPause ? "…" : emergencyPaused ? "⏸️ Pausado — reativar" : "⏸️ Pausar pedidos"}
+            </button>
+            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido a qualquer hora. Fecha sozinho no horário oficial (${STORE_HOURS_LABEL_ADMIN}) — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
+              {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
+            </button>
+            <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
           </div>
-          <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "bg-white text-red-600 hover:bg-white/90" : "bg-red-500/90 text-white hover:bg-red-500"}`}>
-            {togglingPause ? "…" : emergencyPaused ? "Reativar pedidos" : "Pausar pedidos"}
-          </button>
         </div>
 
-        <div className={`mt-3 flex items-center justify-between gap-4 rounded-2xl border p-5 ${manualOpen ? "border-emerald-400/50 bg-emerald-500/10" : "border-white/10 bg-[#171211]"}`}>
-          <div>
-            <p className={`text-sm font-bold ${manualOpen ? "text-emerald-300" : "text-white"}`}>{manualOpen ? "🟢 Abertura antecipada ativada" : "Aberto só no horário normal"}</p>
-            <p className="mt-0.5 text-xs text-white/50">Quer começar mais cedo ou tem evento na cidade? Abre o site pra pedido a qualquer hora. Não se preocupa em desligar — o site sempre fecha sozinho no horário oficial ({STORE_HOURS_LABEL_ADMIN}).</p>
-          </div>
-          <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} className={`shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "bg-white text-emerald-700 hover:bg-white/90" : "bg-emerald-500/90 text-white hover:bg-emerald-500"}`}>
-            {togglingManualOpen ? "…" : manualOpen ? "Desligar abertura antecipada" : "Abrir agora"}
-          </button>
+        <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
+          {ADMIN_TABS.map((tab) => (
+            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${activeTab === tab.id ? "bg-[#ff5a19] text-white" : "text-white/55 hover:text-white"}`}>
+              {tab.label}
+            </button>
+          ))}
         </div>
 
+        {activeTab === "visao" && <>
         <PeriodSection title="Hoje" orders={todayOrders} />
         <PeriodSection title="Essa semana" orders={weekOrders} />
         <PeriodSection title="Esse mês" orders={monthOrders} monthLabel={now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })} />
@@ -585,7 +593,9 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </div>
 
-        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+        </>}
+
+        {activeTab === "fotos" && <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Carrossel do site</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Fotos em destaque para o público</h2>
           <p className="mt-1.5 text-sm text-white/50">Máximo de {CAROUSEL_MAX_IMAGES} fotos por vez. Pra trocar, remova uma antes de adicionar outra.</p>
@@ -609,8 +619,9 @@ function Dashboard({ user }: { user: User }) {
               )}
             </div>
           )}
-        </div>
+        </div>}
 
+        {activeTab === "cardapio" && <>
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
@@ -746,8 +757,9 @@ function Dashboard({ user }: { user: User }) {
             </div>
           </div>
         </div>
+        </>}
 
-        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+        {activeTab === "combos" && <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Combos do dia</h2>
           <p className="mt-1.5 text-sm text-white/50">É a seção "Promoção do dia" do site. Escolhe em quais dias da semana cada combo aparece, o preço e a foto. Se dois combos caírem no mesmo dia, o site revezua sozinho entre eles.</p>
@@ -846,7 +858,7 @@ function Dashboard({ user }: { user: User }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
