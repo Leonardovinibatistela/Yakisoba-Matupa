@@ -9,6 +9,7 @@ export type OrderRecord = {
   customerPhone: string;
   items: OrderLineItem[];
   total: number;
+  notes: string;
   createdAt: Date;
 };
 
@@ -44,7 +45,7 @@ function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
-    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, createdAt };
+    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, notes: data.notes ?? "", createdAt };
   });
 }
 

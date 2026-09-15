@@ -16,6 +16,7 @@ import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
+import { playNewOrderChime } from "./notificationSound";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -419,10 +420,10 @@ function Dashboard({ user }: { user: User }) {
     return unsubscribe;
   }, []);
 
-  // Impressão automática: na primeira carga só "marca como visto" os
-  // pedidos que já existiam (não reimprime o dia inteiro ao conectar) —
-  // só pedidos que chegarem DEPOIS disso, com a impressora ligada e a
-  // opção marcada, saem impressos sozinhos.
+  // Pedido novo: na primeira carga só "marca como visto" os pedidos que já
+  // existiam (não dispara som nem reimprime o dia inteiro ao abrir a
+  // página) — só os que chegarem DEPOIS disso tocam o sininho e, se a
+  // impressora estiver ligada com a opção marcada, saem impressos sozinhos.
   useEffect(() => {
     if (!orders) return;
     if (seenOrderIdsRef.current === null) {
@@ -430,8 +431,10 @@ function Dashboard({ user }: { user: User }) {
       return;
     }
     const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
+    if (newOrders.length === 0) return;
     newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));
-    if (!autoPrint || !printerConn || newOrders.length === 0) return;
+    playNewOrderChime();
+    if (!autoPrint || !printerConn) return;
     newOrders.forEach((order) => {
       printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
     });
@@ -624,6 +627,7 @@ function Dashboard({ user }: { user: User }) {
                             </div>
                           </div>
                           {(order.customerName || order.customerPhone) && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>👤 {order.customerName}{order.customerName && order.customerPhone ? " · " : ""}{order.customerPhone}</p>}
+                          {order.notes.trim() && <p className={`mt-1 font-bold text-[#ff875c] ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>📝 Observação: {order.notes.trim()}</p>}
                           <div className="mt-2 space-y-1">
                             {order.items.map((item) => (
                               <div key={item.id} className={`flex items-center justify-between text-white/65 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>

@@ -85,6 +85,7 @@ const CMD_DOUBLE_ON = [GS, 0x21, 0x11];
 const CMD_DOUBLE_OFF = [GS, 0x21, 0x00];
 const CMD_CUT = [GS, 0x56, 0x00];
 const LINE_WIDTH = 32; // colunas de texto numa impressora térmica de 58mm, fonte padrão
+const SOOBA_CNPJ = "62.321.249/0001-56";
 
 /** Tira acento (impressora térmica barata não entende UTF-8/acentuação). */
 const stripAccents = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x00-\x7F]/g, "");
@@ -118,6 +119,7 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   bytes.push(...CMD_INIT);
   bytes.push(...CMD_ALIGN_CENTER, ...CMD_BOLD_ON, ...CMD_DOUBLE_ON, ...textBytes("SOOBA"), 0x0a, ...CMD_DOUBLE_OFF);
   bytes.push(...textBytes("Yakisoba e Sushi"), 0x0a, ...CMD_BOLD_OFF);
+  bytes.push(...textBytes(`CNPJ: ${SOOBA_CNPJ}`), 0x0a);
   bytes.push(...CMD_BOLD_ON, ...textBytes(`Pedido #${order.orderNumber}`), 0x0a, ...CMD_BOLD_OFF);
   bytes.push(...textBytes(order.createdAt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })), 0x0a);
   bytes.push(...CMD_ALIGN_LEFT);
@@ -125,6 +127,10 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   if (order.customerName || order.customerPhone) {
     bytes.push(...textBytes(`Cliente: ${order.customerName || "-"}`), 0x0a);
     if (order.customerPhone) bytes.push(...textBytes(`Whats: ${order.customerPhone}`), 0x0a);
+    bytes.push(...divider());
+  }
+  if (order.notes.trim()) {
+    bytes.push(...CMD_BOLD_ON, ...textBytes("OBSERVACAO:"), 0x0a, ...textBytes(order.notes.trim()), 0x0a, ...CMD_BOLD_OFF);
     bytes.push(...divider());
   }
   order.items.forEach((item) => {
