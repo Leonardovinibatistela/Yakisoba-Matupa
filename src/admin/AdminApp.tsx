@@ -164,6 +164,22 @@ function Dashboard({ user }: { user: User }) {
     });
   };
 
+  // Som de pedido novo: pode desligar (checkbox) e ajustar o volume
+  // (controle deslizante) — fica salvo no navegador desse computador/celular.
+  const [soundEnabled, setSoundEnabled] = useState(() => { try { return localStorage.getItem("sooba_sound_enabled") !== "0"; } catch { return true; } });
+  const [soundVolume, setSoundVolume] = useState(() => { try { const saved = localStorage.getItem("sooba_sound_volume"); return saved !== null ? Number(saved) : 70; } catch { return 70; } });
+  const handleToggleSound = () => {
+    setSoundEnabled((current) => {
+      const next = !current;
+      try { localStorage.setItem("sooba_sound_enabled", next ? "1" : "0"); } catch { /* localStorage indisponível, tudo bem seguir sem salvar */ }
+      return next;
+    });
+  };
+  const handleChangeSoundVolume = (value: number) => {
+    setSoundVolume(value);
+    try { localStorage.setItem("sooba_sound_volume", String(value)); } catch { /* localStorage indisponível, tudo bem seguir sem salvar */ }
+  };
+
   const [emergencyPaused, setEmergencyPausedState] = useState(false);
   const [togglingPause, setTogglingPause] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPausedState), []);
@@ -433,12 +449,12 @@ function Dashboard({ user }: { user: User }) {
     const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
     if (newOrders.length === 0) return;
     newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));
-    playNewOrderChime();
+    if (soundEnabled) playNewOrderChime(soundVolume / 100);
     if (!autoPrint || !printerConn) return;
     newOrders.forEach((order) => {
       printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
     });
-  }, [orders, autoPrint, printerConn]);
+  }, [orders, autoPrint, printerConn, soundEnabled, soundVolume]);
 
   useEffect(() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
@@ -604,6 +620,16 @@ function Dashboard({ user }: { user: User }) {
             <label className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${printerConn ? "text-white/70" : "text-white/30"}`}>
               <input type="checkbox" checked={autoPrint} onChange={handleToggleAutoPrint} disabled={!printerConn} className="h-3.5 w-3.5" />
               Imprimir pedidos novos automaticamente
+            </label>
+            <span className="hidden h-4 w-px bg-white/15 sm:block" />
+            <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white/70">
+              <input type="checkbox" checked={soundEnabled} onChange={handleToggleSound} className="h-3.5 w-3.5" />
+              🔔 Som de pedido novo
+            </label>
+            <label className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${soundEnabled ? "text-white/70" : "text-white/30"}`}>
+              Volume
+              <input type="range" min={0} max={100} step={5} value={soundVolume} disabled={!soundEnabled} onChange={(e) => handleChangeSoundVolume(Number(e.target.value))} className="h-1.5 w-24 accent-[#ff5a19] disabled:opacity-40" />
+              <button type="button" onClick={() => { if (soundEnabled) playNewOrderChime(soundVolume / 100); }} disabled={!soundEnabled} title="Testar som" className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">▶ Testar</button>
             </label>
           </div>
 
