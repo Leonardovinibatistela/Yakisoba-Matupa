@@ -481,12 +481,21 @@ function Dashboard({ user }: { user: User }) {
   // qualquer mês passado, não só hoje.
   const weekdayChart = revenueByWeekday(pickedMonthOrders ?? []);
   const maxWeekdayValue = Math.max(1, ...weekdayChart.map((bucket) => bucket.total));
-  const pickedTop3 = bestSellers(pickedMonthOrders ?? [], 3);
 
   const pickedDateObj = (() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
     return new Date(year, (month || 1) - 1, day || 1);
   })();
+
+  // O ranking "Top 3" acompanha o mês inteiro quando o usuário está em "Hoje"
+  // ou "Mês passado" (visão de resumo), mas quando ele escolhe um dia
+  // específico no calendário, mostra o ranking só daquele dia — é o que
+  // faz sentido pra ver o que vendeu mais NAQUELE dia.
+  const lastMonthPresetDate = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d; })();
+  const isTodayPicked = pickedDateObj.toDateString() === now.toDateString();
+  const isLastMonthPresetPicked = pickedDateObj.getFullYear() === lastMonthPresetDate.getFullYear() && pickedDateObj.getMonth() === lastMonthPresetDate.getMonth() && pickedDateObj.getDate() === 1;
+  const showDayTop3 = !isTodayPicked && !isLastMonthPresetPicked;
+  const pickedTop3 = bestSellers((showDayTop3 ? pickedDayOrders : pickedMonthOrders) ?? [], 3);
 
   const handleUploadImage = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -562,9 +571,13 @@ function Dashboard({ user }: { user: User }) {
                 <p className="mt-1 text-xs text-white/55"><strong className="text-white">{pickedMonthOrders.length}</strong> pedido{pickedMonthOrders.length === 1 ? "" : "s"} nesse mês</p>
               </div>
               <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4 md:col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos em {pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</p>
+                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">
+                  {showDayTop3
+                    ? `Top 3 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`
+                    : `Top 3 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+                </p>
                 {pickedTop3.length === 0 ? (
-                  <p className="mt-3 text-sm text-white/50">Sem pedidos nesse mês.</p>
+                  <p className="mt-3 text-sm text-white/50">{showDayTop3 ? "Sem pedidos nesse dia." : "Sem pedidos nesse mês."}</p>
                 ) : (
                   <div className="mt-3 space-y-2.5">
                     {pickedTop3.map((item, index) => (
