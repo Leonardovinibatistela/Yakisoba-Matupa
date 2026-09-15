@@ -4,15 +4,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Contador de pedidos: qualquer pessoa pode ler o valor atual (necessário
-    // pra transação funcionar). Só pode incrementar de 1 em 1 dentro do mesmo
-    // dia (nunca pular número nem diminuir), OU reiniciar pra 1 quando a data
-    // muda (primeiro pedido de um novo dia).
+    // pra transação funcionar). Acumula normal entre os dias (não reinicia
+    // todo dia) — só pode incrementar de 1 em 1, OU voltar pro 1 quando o
+    // valor anterior já tiver chegado em 100.
     match /counters/orders {
       allow get: if true;
-      allow create: if request.resource.data.current == 1 && request.resource.data.date is string;
-      allow update: if request.resource.data.date is string
-        && ((request.resource.data.current == resource.data.get('current', 0) + 1 && request.resource.data.date == resource.data.get('date', null))
-          || (request.resource.data.current == 1 && request.resource.data.date != resource.data.get('date', null)));
+      allow create: if request.resource.data.current == 1;
+      allow update: if (request.resource.data.current == resource.data.get('current', 0) + 1 && resource.data.get('current', 0) < 100)
+        || (request.resource.data.current == 1 && resource.data.get('current', 0) >= 100);
       allow delete: if false;
     }
 
