@@ -668,7 +668,16 @@ function Dashboard({ user }: { user: User }) {
                             </div>
                           </div>
                           {(order.customerName || order.customerPhone) && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>👤 {order.customerName}{order.customerName && order.customerPhone ? " · " : ""}{order.customerPhone}</p>}
-                          {order.deliveryType === "entrega" && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>🛵 Entrega{order.location.trim() ? `: ${order.location.trim()}` : ""}</p>}
+                          {order.deliveryType === "entrega" && (() => {
+                            const location = order.location.trim();
+                            const mapsMatch = location.match(/^(https:\/\/maps\.google\.com\/\?q=\S+)(.*)$/);
+                            const textClass = `mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`;
+                            if (mapsMatch) {
+                              const [, mapsUrl, extra] = mapsMatch;
+                              return <p className={textClass}>🛵 Entrega — <a href={mapsUrl} target="_blank" rel="noreferrer" className="underline decoration-dotted hover:text-white">📍 Ver no mapa</a>{extra.trim() ? ` ${extra.trim()}` : ""}</p>;
+                            }
+                            return <p className={textClass}>🛵 Entrega{location ? `: ${location}` : ""}</p>;
+                          })()}
                           {order.deliveryType === "retirada" && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>🏪 Retirada no local</p>}
                           {order.paymentMethod && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>💳 Pagamento: {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}</p>}
                           {order.notes.trim() && <p className={`mt-1 font-bold text-[#ff875c] ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>📝 Observação: {order.notes.trim()}</p>}

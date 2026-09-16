@@ -113,6 +113,26 @@ function row(left: string, right: string): number[] {
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+/**
+ * Monta os bytes de um QR Code no padrão ESC/POS (comando "GS ( k"), que a
+ * grande maioria das impressoras térmicas baratas (inclusive clones) entende.
+ * Se o modelo específico não suportar, esses bytes são ignorados e o resto
+ * do recibo continua imprimindo normal — não trava nada.
+ */
+function qrCodeBytes(data: string, moduleSize: number = 6): number[] {
+  const dataBytes = textBytes(data);
+  const storeLength = dataBytes.length + 3;
+  const pL = storeLength & 0xff;
+  const pH = (storeLength >> 8) & 0xff;
+  return [
+    GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00, // modelo QR (Model 2)
+    GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, moduleSize, // tamanho de cada quadradinho
+    GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31, // correção de erro nível M
+    GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30, ...dataBytes, // guarda os dados
+    GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30, // manda imprimir
+  ];
+}
+
 const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartao", dinheiro: "Dinheiro" };
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora. */
@@ -133,7 +153,23 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   }
   if (order.deliveryType === "entrega") {
     bytes.push(...CMD_BOLD_ON, ...textBytes("ENTREGA"), 0x0a, ...CMD_BOLD_OFF);
-    if (order.location.trim()) bytes.push(...textBytes(order.location.trim()), 0x0a);
+    const location = order.location.trim();
+    // Quando o cliente usa o botão "Usar localização" no site, o endereço
+    // vira um link do Google Maps (ex.: https://maps.google.com/?q=lat,lng)
+    // em vez de um endereço legível — nesse caso, em vez de imprimir o link
+    // cru (que ninguém consegue clicar no papel), imprime um QR Code que o
+    // entregador escaneia com a câmera do celular e abre direto no mapa.
+    const mapsMatch = location.match(/^(https:\/\/maps\.google\.com\/\?q=\S+)(.*)$/);
+    if (mapsMatch) {
+      const [, mapsUrl, extra] = mapsMatch;
+      bytes.push(...textBytes("Localizacao por GPS:"), 0x0a);
+      bytes.push(...CMD_ALIGN_CENTER, ...qrCodeBytes(mapsUrl), 0x0a, ...CMD_ALIGN_LEFT);
+      bytes.push(...textBytes("(aponte a camera do celular)"), 0x0a);
+      if (extra.trim()) bytes.push(...textBytes(extra.trim()), 0x0a);
+      bytes.push(...textBytes("Link: " + mapsUrl), 0x0a);
+    } else if (location) {
+      bytes.push(...textBytes(location), 0x0a);
+    }
     bytes.push(...divider());
   } else if (order.deliveryType === "retirada") {
     bytes.push(...CMD_BOLD_ON, ...textBytes("RETIRADA NO LOCAL"), 0x0a, ...CMD_BOLD_OFF);
