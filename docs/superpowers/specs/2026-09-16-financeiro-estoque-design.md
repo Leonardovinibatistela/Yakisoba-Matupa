@@ -94,6 +94,13 @@ fixedExpenses/{expenseId}
   name: string
   amount: number
 
+stockMovements/{movementId}   // [revisão 2] extrato — nunca apagado, mesmo se o pedido original for
+  orderId: string
+  orderNumber: number
+  type: "baixa" | "devolucao"
+  items: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[]
+  createdAt: Timestamp
+
 orders/{orderId}   // campos NOVOS no doc que já existe
   stockDeducted: boolean
   ingredientCost: number             // custo total gravado no momento da baixa
@@ -105,8 +112,8 @@ orders/{orderId}   // campos NOVOS no doc que já existe
 Regra do Firestore: mesmo padrão de `menuStatus/{document}` já existente
 (`allow read: if true; allow write: if request.auth != null;`) cobre
 `ingredients`, `menuStatus/recipes`, `menuStatus/paymentFees` e
-`fixedExpenses`. `ingredientPurchases` só precisa de escrita autenticada
-(nunca lido pelo site público).
+`fixedExpenses`. `ingredientPurchases` e `stockMovements` só precisam de
+escrita autenticada (nunca lidos pelo site público).
 
 ## Fluxos principais
 
@@ -223,6 +230,36 @@ então funciona igual pra item base, item custom e combo do dia.
   técnica".
 - **[revisão]** Taxa de pagamento (Pix/Cartão/Dinheiro) é configurável numa
   telinha simples dentro do Financeiro — 3 campos de porcentagem.
+
+### Extrato de movimentação de estoque **[revisão 2]**
+O cliente pediu: quando um pedido entra, quer ver em algum lugar do
+Financeiro/Estoque "o Pedido #N descontou tanto de ingrediente" — e se
+esse pedido for apagado depois, quer ver que ele devolveu. Hoje isso não
+dava pra mostrar porque apagar um pedido apaga o documento inteiro, sem
+deixar rastro.
+
+Solução: uma coleção nova, só de log, que nunca é apagada mesmo que o
+pedido original seja:
+
+```
+stockMovements/{movementId}
+  orderId: string
+  orderNumber: number
+  type: "baixa" | "devolucao"
+  items: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[] // nome e unidade GRAVADOS no momento (não referenciados), pra continuar legível mesmo se o ingrediente for renomeado ou apagado depois
+  createdAt: Timestamp
+```
+
+`deductStockForOrder` grava uma linha `"baixa"` toda vez que desconta
+estoque de verdade (não grava nada se o pedido não tinha nenhum ingrediente
+pra descontar). `restoreStockForOrder` grava uma linha `"devolucao"`
+quando devolve. As duas gravações acontecem dentro da mesma transação que
+já existe — não é uma escrita extra "solta".
+
+Aparece numa lista nova (mais recente primeiro, limitada às últimas 200
+movimentações) dentro da aba Financeiro — assim, mesmo que um pedido seja
+apagado, continua dando pra ver no extrato que ele descontou e depois
+devolveu.
 
 ## Casos de borda já decididos
 
