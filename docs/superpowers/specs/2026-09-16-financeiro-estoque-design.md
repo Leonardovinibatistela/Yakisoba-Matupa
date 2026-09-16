@@ -139,6 +139,12 @@ então funciona igual pra item base, item custom e combo do dia.
   dos pedidos do período), Margem = Bruto − Custo variável.
 - Card Mês: os mesmos + Gastos fixos (soma de `fixedExpenses`) + **Lucro
   líquido real** = Bruto − Custo variável − Gastos fixos.
+- Card Mês mostra também, como número auxiliar separado, o **Total
+  comprado no mês** (soma de `ingredientPurchases` do período) — essa é a
+  visão "Nível 1" que funciona mesmo sem nenhuma ficha técnica cadastrada
+  ainda (mede quanto saiu do caixa comprando, não quanto foi de fato
+  consumido pelo que foi vendido). Fica marcado como número aproximado,
+  distinto do Custo variável "de verdade" (que vem das vendas).
 - Se algum pedido do período tiver `missingRecipeItemIds` não vazio, mostra
   aviso "N pedidos com prato sem ficha técnica — custo pode estar
   subestimado".
