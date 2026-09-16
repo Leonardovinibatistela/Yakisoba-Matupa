@@ -120,6 +120,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // Extrato de movimentação de estoque (baixa/devolução por pedido) — só o
+    // admin autenticado lê e escreve, o site público nunca acessa isso.
+    match /stockMovements/{movementId} {
+      allow read, write: if request.auth != null;
+    }
+
     // Tudo que não foi listado acima continua bloqueado por padrão.
     match /{document=**} {
       allow read, write: if false;

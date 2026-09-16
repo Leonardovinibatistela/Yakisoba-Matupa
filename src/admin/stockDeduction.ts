@@ -1,6 +1,6 @@
 import type { OrderLineItem } from "../orders";
 import type { Recipes } from "./recipes";
-import { doc, runTransaction } from "firebase/firestore";
+import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
 // Mesmos separadores usados no carrinho do site público (src/App.tsx) pra
@@ -57,6 +57,7 @@ export function totalUsageByIngredient(consumptions: ItemConsumption[]): Record<
  * pedido for apagado). Roda dentro de uma transação, então mesmo com o
  * painel aberto em mais de um computador, a baixa acontece só uma vez: a
  * segunda tentativa relê o pedido, vê stockDeducted já true, e não faz nada.
+ * Também grava uma linha no extrato de movimentação (stockMovements).
  */
 export async function deductStockForOrder(orderId: string): Promise<void> {
   const orderRef = doc(db, "orders", orderId);
@@ -79,6 +80,7 @@ export async function deductStockForOrder(orderId: string): Promise<void> {
 
     let totalCost = 0;
     const deductedIngredients: { ingredientId: string; quantity: number }[] = [];
+    const movementItems: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[] = [];
     const incompleteCostIngredientIds = new Set<string>();
     ingredientIds.forEach((ingredientId, index) => {
       const snap = ingredientSnaps[index];
@@ -95,19 +97,27 @@ export async function deductStockForOrder(orderId: string): Promise<void> {
         const currentStock = (data!.stock as number) ?? 0;
         transaction.update(ingredientRefs[index], { stock: currentStock - quantityUsed });
         deductedIngredients.push({ ingredientId, quantity: quantityUsed });
+        movementItems.push({ ingredientId, ingredientName: (data!.name as string) ?? ingredientId, quantity: quantityUsed, unit: (data!.unit as string) ?? "" });
       }
     });
 
     const incompleteCostItemIds = consumptions.filter(({ consumption }) => consumption.some(({ ingredientId }) => incompleteCostIngredientIds.has(ingredientId))).map(({ itemId }) => itemId);
 
     transaction.update(orderRef, { stockDeducted: true, ingredientCost: totalCost, missingRecipeItemIds: missingItemIds, incompleteCostItemIds, deductedIngredients });
+
+    // Extrato: só grava linha se realmente descontou algo de algum ingrediente cadastrado.
+    if (movementItems.length > 0) {
+      transaction.set(doc(collection(db, "stockMovements")), { orderId, orderNumber: (orderData.orderNumber as number) ?? 0, type: "baixa", items: movementItems, createdAt: serverTimestamp() });
+    }
   });
 }
 
 /**
  * Devolve ao estoque os ingredientes que um pedido já tinha descontado —
  * chamado antes de apagar um pedido. Se o pedido nunca descontou estoque
- * (stockDeducted false), não faz nada.
+ * (stockDeducted false), não faz nada. Também grava uma linha no extrato
+ * de movimentação (stockMovements) — essa linha continua visível mesmo
+ * depois do pedido em si ser apagado de verdade logo em seguida.
  */
 export async function restoreStockForOrder(orderId: string): Promise<void> {
   const orderRef = doc(db, "orders", orderId);
@@ -121,13 +131,25 @@ export async function restoreStockForOrder(orderId: string): Promise<void> {
     const ingredientRefs = deductedIngredients.map((entry) => doc(db, "ingredients", entry.ingredientId));
     const ingredientSnaps = await Promise.all(ingredientRefs.map((ref) => transaction.get(ref)));
 
+    const movementItems: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[] = [];
     deductedIngredients.forEach((entry, index) => {
       const snap = ingredientSnaps[index];
-      if (!snap.exists()) return;
-      const currentStock = (snap.data().stock as number) ?? 0;
-      transaction.update(ingredientRefs[index], { stock: currentStock + entry.quantity });
+      const exists = snap.exists();
+      const data = exists ? snap.data() : null;
+      // Ingrediente pode ter sido apagado desde a baixa original — nesse
+      // caso não dá pra devolver estoque nele (doc não existe mais), mas a
+      // linha do extrato ainda registra que a devolução foi tentada.
+      movementItems.push({ ingredientId: entry.ingredientId, ingredientName: exists ? ((data!.name as string) ?? entry.ingredientId) : `${entry.ingredientId} (removido)`, quantity: entry.quantity, unit: exists ? ((data!.unit as string) ?? "") : "" });
+      if (exists) {
+        const currentStock = (data!.stock as number) ?? 0;
+        transaction.update(ingredientRefs[index], { stock: currentStock + entry.quantity });
+      }
     });
 
     transaction.update(orderRef, { stockDeducted: false });
+
+    if (movementItems.length > 0) {
+      transaction.set(doc(collection(db, "stockMovements")), { orderId, orderNumber: (orderData.orderNumber as number) ?? 0, type: "devolucao", items: movementItems, createdAt: serverTimestamp() });
+    }
   });
 }

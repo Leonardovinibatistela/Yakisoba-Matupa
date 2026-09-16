@@ -22,9 +22,11 @@ import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
 import { subscribeFixedExpenses, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense } from "./fixedExpenses";
 import { subscribePaymentFeeRates, setPaymentFeeRates as persistPaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
 import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
+import { subscribeStockMovements, type StockMovement } from "./stockMovements";
 import IngredientsPanel from "./IngredientsPanel";
 import RecipeEditor from "./RecipeEditor";
 import FinanceiroPanel from "./FinanceiroPanel";
+import StockMovementsLog from "./StockMovementsLog";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -165,6 +167,8 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeFixedExpenses(setFixedExpenses), []);
   const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
   useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  useEffect(() => subscribeStockMovements(setStockMovements), []);
   const handleConnectPrinter = () => {
     setConnectingPrinter(true);
     connectPrinter()
@@ -785,6 +789,7 @@ function Dashboard({ user }: { user: User }) {
         </div>}
 
         {activeTab === "financeiro" && (
+          <>
           <FinanceiroPanel
             todayOrders={todayOrders}
             weekOrders={weekOrders}
@@ -800,6 +805,8 @@ function Dashboard({ user }: { user: User }) {
             onDeleteFixedExpense={deleteFixedExpense}
             onSetPaymentFeeRates={persistPaymentFeeRates}
           />
+          <StockMovementsLog movements={stockMovements} />
+          </>
         )}
 
         {activeTab === "cardapio" && <>
