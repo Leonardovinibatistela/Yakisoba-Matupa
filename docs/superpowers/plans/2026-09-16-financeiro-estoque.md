@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Dar ao admin do Sooba Yakisoba um controle real de lucro: estoque de ingredientes com custo médio, ficha técnica por prato, baixa automática de estoque por pedido, despesas fixas, e uma aba "Financeiro" com bruto/custo/lucro líquido e ranking de margem por prato.
+**Goal:** Dar ao admin do Sooba Yakisoba um controle real de lucro: estoque de ingredientes com custo médio, ficha técnica por prato, baixa automática de estoque por pedido (com extrato rastreável mesmo se o pedido for apagado), despesas fixas, taxa de pagamento e uma aba "Financeiro" com bruto/custo/lucro líquido e ranking de margem por prato.
 
 **Architecture:** Segue o mesmo padrão já usado no projeto (React 18 + TypeScript + Firestore, um arquivo `.ts` por domínio de dados em `src/admin/`, componentes de UI separados consumidos por `AdminApp.tsx`). Todo o estoque descontado por pedido roda dentro de uma transação Firestore, disparada reativamente quando o admin detecta um pedido novo — mesmo gatilho que já dispara o som e a impressão automática hoje.
 
@@ -197,7 +197,7 @@ console.log("ingredients.ts: todas as checagens passaram");
 Run: `node scratch-ingredients-check.mjs`
 Expected: `ingredients.ts: todas as checagens passaram` sem nenhum erro de assert.
 
-(`editPurchase`/`deletePurchase`/`subscribeIngredientPurchases` não entram nesse script — dependem do Firestore de verdade, ficam pro checklist manual do Task 13.)
+(`editPurchase`/`deletePurchase`/`subscribeIngredientPurchases` não entram nesse script — dependem do Firestore de verdade, ficam pro checklist manual do Task 14.)
 
 - [ ] **Step 3: Apagar o script avulso**
 
@@ -647,7 +647,7 @@ git add src/admin/stockDeduction.ts
 git commit -m "Adiciona baixa e devolucao transacional de estoque, lendo receita direto do banco pra evitar corrida"
 ```
 
-(Sem verificação automatizada possível aqui — precisa de um banco Firestore de verdade. A verificação ao vivo fica no checklist manual do Task 13.)
+(Sem verificação automatizada possível aqui — precisa de um banco Firestore de verdade. A verificação ao vivo fica no checklist manual do Task 14.)
 
 ---
 
@@ -1414,7 +1414,252 @@ git commit -m "Adiciona a aba Financeiro no painel admin"
 
 ---
 
-## Task 13: Verificação final e deploy
+## Task 13: `src/admin/stockMovements.ts` + `StockMovementsLog.tsx` — extrato de movimentação de estoque
+
+**Files:**
+- Create: `src/admin/stockMovements.ts`
+- Modify: `src/admin/stockDeduction.ts` (grava uma linha de extrato dentro das transações que já existem)
+- Modify: `firestore.rules` (adiciona regra de `stockMovements`)
+- Create: `src/admin/StockMovementsLog.tsx`
+- Modify: `src/admin/AdminApp.tsx` (assina o extrato e renderiza na aba Financeiro)
+
+**Interfaces:**
+- Produces (`stockMovements.ts`): `type StockMovementItem = { ingredientId: string; ingredientName: string; quantity: number; unit: string }`; `type StockMovement = { id: string; orderId: string; orderNumber: number; type: "baixa" | "devolucao"; items: StockMovementItem[]; createdAt: Date }`; `subscribeStockMovements(onUpdate: (movements: StockMovement[]) => void, onError?: (error: unknown) => void): () => void`.
+- Produces (`StockMovementsLog.tsx`): componente com props `{ movements: StockMovement[] }`.
+
+- [ ] **Step 1: Escrever `src/admin/stockMovements.ts`**
+
+```ts
+import { collection, limit, onSnapshot, orderBy, query, Timestamp } from "firebase/firestore";
+import { db } from "../firebase";
+
+export type StockMovementItem = { ingredientId: string; ingredientName: string; quantity: number; unit: string };
+export type StockMovement = { id: string; orderId: string; orderNumber: number; type: "baixa" | "devolucao"; items: StockMovementItem[]; createdAt: Date };
+
+const stockMovementsCollection = collection(db, "stockMovements");
+
+/** Extrato de movimentação de estoque — as 200 mais recentes, mais nova primeiro. Continua mostrando um pedido mesmo depois dele ser apagado (é um log, não referencia o pedido original pra exibir). */
+export function subscribeStockMovements(onUpdate: (movements: StockMovement[]) => void, onError?: (error: unknown) => void): () => void {
+  return onSnapshot(
+    query(stockMovementsCollection, orderBy("createdAt", "desc"), limit(200)),
+    (snapshot) => onUpdate(snapshot.docs.map((docSnap) => {
+      const data = docSnap.data();
+      const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
+      return { id: docSnap.id, orderId: data.orderId ?? "", orderNumber: data.orderNumber ?? 0, type: (data.type ?? "baixa") as StockMovement["type"], items: (data.items as StockMovementItem[]) ?? [], createdAt };
+    })),
+    onError
+  );
+}
+```
+
+- [ ] **Step 2: Gravar uma linha de extrato em `deductStockForOrder`**
+
+Em `src/admin/stockDeduction.ts`, troque a função `deductStockForOrder` inteira (escrita no Task 5) por essa versão (só acrescenta a gravação do extrato — o resto é idêntico):
+
+```ts
+/**
+ * Desconta do estoque os ingredientes usados por um pedido, e grava no
+ * próprio pedido quanto custou (ingredientCost) e exatamente o que foi
+ * descontado de cada ingrediente (deductedIngredients — usado depois se o
+ * pedido for apagado). Roda dentro de uma transação, então mesmo com o
+ * painel aberto em mais de um computador, a baixa acontece só uma vez: a
+ * segunda tentativa relê o pedido, vê stockDeducted já true, e não faz nada.
+ * Também grava uma linha no extrato de movimentação (stockMovements).
+ */
+export async function deductStockForOrder(orderId: string): Promise<void> {
+  const orderRef = doc(db, "orders", orderId);
+  const recipesRef = doc(db, "menuStatus", "recipes");
+  await runTransaction(db, async (transaction) => {
+    const orderSnap = await transaction.get(orderRef);
+    if (!orderSnap.exists()) return;
+    const orderData = orderSnap.data();
+    if (orderData.stockDeducted) return;
+
+    const recipesSnap = await transaction.get(recipesRef);
+    const recipes = (recipesSnap.exists() ? recipesSnap.data().recipes : {}) as Recipes;
+
+    const items = (orderData.items as OrderLineItem[]) ?? [];
+    const { consumptions, missingItemIds } = computeIngredientUsage(items, recipes);
+    const usage = totalUsageByIngredient(consumptions);
+    const ingredientIds = Object.keys(usage);
+    const ingredientRefs = ingredientIds.map((id) => doc(db, "ingredients", id));
+    const ingredientSnaps = await Promise.all(ingredientRefs.map((ref) => transaction.get(ref)));
+
+    let totalCost = 0;
+    const deductedIngredients: { ingredientId: string; quantity: number }[] = [];
+    const movementItems: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[] = [];
+    const incompleteCostIngredientIds = new Set<string>();
+    ingredientIds.forEach((ingredientId, index) => {
+      const snap = ingredientSnaps[index];
+      const quantityUsed = usage[ingredientId];
+      const data = snap.exists() ? snap.data() : null;
+      const avgCost = (data?.avgCost as number) ?? 0;
+      // Ingrediente nunca comprado (avgCost 0) ou apagado depois de entrar
+      // na ficha técnica (doc não existe mais): a contribuição dele conta
+      // como 0 no custo, mas o item fica sinalizado como incompleto — NUNCA
+      // é tratado como "esse ingrediente realmente não custa nada".
+      if (!snap.exists() || avgCost <= 0) incompleteCostIngredientIds.add(ingredientId);
+      totalCost += quantityUsed * avgCost;
+      if (snap.exists()) {
+        const currentStock = (data!.stock as number) ?? 0;
+        transaction.update(ingredientRefs[index], { stock: currentStock - quantityUsed });
+        deductedIngredients.push({ ingredientId, quantity: quantityUsed });
+        movementItems.push({ ingredientId, ingredientName: (data!.name as string) ?? ingredientId, quantity: quantityUsed, unit: (data!.unit as string) ?? "" });
+      }
+    });
+
+    const incompleteCostItemIds = consumptions.filter(({ consumption }) => consumption.some(({ ingredientId }) => incompleteCostIngredientIds.has(ingredientId))).map(({ itemId }) => itemId);
+
+    transaction.update(orderRef, { stockDeducted: true, ingredientCost: totalCost, missingRecipeItemIds: missingItemIds, incompleteCostItemIds, deductedIngredients });
+
+    // Extrato: só grava linha se realmente descontou algo de algum ingrediente cadastrado.
+    if (movementItems.length > 0) {
+      transaction.set(doc(collection(db, "stockMovements")), { orderId, orderNumber: (orderData.orderNumber as number) ?? 0, type: "baixa", items: movementItems, createdAt: serverTimestamp() });
+    }
+  });
+}
+```
+
+- [ ] **Step 3: Gravar uma linha de extrato em `restoreStockForOrder`**
+
+Troque a função `restoreStockForOrder` inteira (escrita no Task 5) por essa versão:
+
+```ts
+/**
+ * Devolve ao estoque os ingredientes que um pedido já tinha descontado —
+ * chamado antes de apagar um pedido. Se o pedido nunca descontou estoque
+ * (stockDeducted false), não faz nada. Também grava uma linha no extrato
+ * de movimentação (stockMovements) — essa linha continua visível mesmo
+ * depois do pedido em si ser apagado de verdade logo em seguida.
+ */
+export async function restoreStockForOrder(orderId: string): Promise<void> {
+  const orderRef = doc(db, "orders", orderId);
+  await runTransaction(db, async (transaction) => {
+    const orderSnap = await transaction.get(orderRef);
+    if (!orderSnap.exists()) return;
+    const orderData = orderSnap.data();
+    if (!orderData.stockDeducted) return;
+
+    const deductedIngredients = (orderData.deductedIngredients as { ingredientId: string; quantity: number }[]) ?? [];
+    const ingredientRefs = deductedIngredients.map((entry) => doc(db, "ingredients", entry.ingredientId));
+    const ingredientSnaps = await Promise.all(ingredientRefs.map((ref) => transaction.get(ref)));
+
+    const movementItems: { ingredientId: string; ingredientName: string; quantity: number; unit: string }[] = [];
+    deductedIngredients.forEach((entry, index) => {
+      const snap = ingredientSnaps[index];
+      const exists = snap.exists();
+      const data = exists ? snap.data() : null;
+      // Ingrediente pode ter sido apagado desde a baixa original — nesse
+      // caso não dá pra devolver estoque nele (doc não existe mais), mas a
+      // linha do extrato ainda registra que a devolução foi tentada.
+      movementItems.push({ ingredientId: entry.ingredientId, ingredientName: exists ? ((data!.name as string) ?? entry.ingredientId) : `${entry.ingredientId} (removido)`, quantity: entry.quantity, unit: exists ? ((data!.unit as string) ?? "") : "" });
+      if (exists) {
+        const currentStock = (data!.stock as number) ?? 0;
+        transaction.update(ingredientRefs[index], { stock: currentStock + entry.quantity });
+      }
+    });
+
+    transaction.update(orderRef, { stockDeducted: false });
+
+    if (movementItems.length > 0) {
+      transaction.set(doc(collection(db, "stockMovements")), { orderId, orderNumber: (orderData.orderNumber as number) ?? 0, type: "devolucao", items: movementItems, createdAt: serverTimestamp() });
+    }
+  });
+}
+```
+
+- [ ] **Step 4: Ajustar os imports do topo de `src/admin/stockDeduction.ts`**
+
+Adicione `collection` e `serverTimestamp` (que ainda não estavam sendo usados nesse arquivo) ao import de `firebase/firestore` já existente no topo do arquivo, junto de `doc, runTransaction`:
+
+```ts
+import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
+```
+
+- [ ] **Step 5: Adicionar a regra do Firestore pra `stockMovements`**
+
+Em `firestore.rules` (mesmo bloco de antes):
+
+```
+    match /stockMovements/{movementId} {
+      allow read, write: if request.auth != null;
+    }
+```
+
+**Não publique essa regra você mesmo** — mesma observação do Task 1.
+
+- [ ] **Step 6: Escrever `src/admin/StockMovementsLog.tsx`**
+
+```tsx
+import type { StockMovement } from "./stockMovements";
+
+const formatQuantity = (item: { quantity: number; unit: string }) => `${item.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} ${item.unit}`.trim();
+
+export default function StockMovementsLog({ movements }: { movements: StockMovement[] }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#171211] p-6">
+      <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Movimentação de estoque</p>
+      <h3 className="mt-1 font-display text-lg font-extrabold tracking-[-.03em]">O que cada pedido descontou (e devolveu, se foi apagado)</h3>
+      <div className="mt-4 max-h-96 overflow-y-auto divide-y divide-white/10 rounded-xl border border-white/10">
+        {movements.length === 0 ? (
+          <p className="p-4 text-sm text-white/50">Nenhuma movimentação ainda.</p>
+        ) : movements.map((movement) => (
+          <div key={movement.id} className="p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={`text-xs font-bold ${movement.type === "devolucao" ? "text-amber-300" : "text-white"}`}>{movement.type === "devolucao" ? "↩️ Apagado — devolveu" : "📦 Descontou"} — Pedido #{movement.orderNumber}</span>
+              <span className="text-[11px] text-white/40">{movement.createdAt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <p className="mt-1 text-xs text-white/55">{movement.items.map((item) => `${formatQuantity(item)} ${item.ingredientName}`).join(", ")}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 7: Assinar e renderizar no `AdminApp.tsx`**
+
+Importar (junto dos outros imports de `./`):
+
+```ts
+import { subscribeStockMovements, type StockMovement } from "./stockMovements";
+import StockMovementsLog from "./StockMovementsLog";
+```
+
+Estado, perto das outras assinaturas do Task 7:
+
+```ts
+const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+useEffect(() => subscribeStockMovements(setStockMovements), []);
+```
+
+Na renderização da aba Financeiro (dentro do `{activeTab === "financeiro" && (...)}` já escrito no Task 12), acrescente logo depois do `<FinanceiroPanel ... />`:
+
+```tsx
+<StockMovementsLog movements={stockMovements} />
+```
+
+- [ ] **Step 8: Checar tipos**
+
+Run: `npx tsc --noEmit`
+Expected: sem erros.
+
+- [ ] **Step 9: Build**
+
+Run: `npm run build`
+Expected: build termina sem erro.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/admin/stockMovements.ts src/admin/stockDeduction.ts src/admin/StockMovementsLog.tsx src/admin/AdminApp.tsx firestore.rules
+git commit -m "Adiciona extrato de movimentacao de estoque, visivel mesmo apos apagar o pedido"
+```
+
+---
+
+## Task 14: Verificação final e deploy
 
 **Files:** nenhum arquivo novo — só verificação e publicação.
 
@@ -1432,10 +1677,11 @@ Documentar (não executar automaticamente) os seguintes passos pro humano confir
 4. Em um prato do cardápio, clicar "🧂 Ficha técnica", adicionar um ingrediente com quantidade, salvar, reabrir e confirmar que salvou.
 5. Simular um pedido de teste com esse prato → conferir no Firestore (ou reabrindo o pedido) que `stockDeducted` virou `true`, o estoque do ingrediente baixou, e `ingredientCost` foi gravado.
 6. Cadastrar um segundo prato com ficha técnica usando um ingrediente **recém-criado sem nenhuma compra ainda** (custo médio 0) → simular um pedido com ele e conferir que `incompleteCostItemIds` grava esse item, e que o Financeiro mostra o aviso de custo incompleto (não custo R$0 silencioso).
-7. Apagar o pedido de teste do passo 5 → conferir que o estoque do ingrediente voltou ao valor de antes.
-8. Aba Financeiro: preencher uma taxa de cartão (ex.: 3%), conferir que ela aparece descontada nos cards; conferir que os cards de Hoje/Semana/Mês aparecem, que o card do mês mostra Gastos fixos, Total comprado no período e Lucro líquido, e que o ranking de pratos mostra o prato do passo 4 — e que o prato do passo 6 aparece separado, marcado como custo incompleto, não no ranking.
-9. Cadastrar uma despesa fixa e conferir que ela entra na conta do card do mês.
-10. Fechar e reabrir o painel (recarregar a página) com algum pedido antigo sem `stockDeducted` (se houver) → conferir que a varredura de recuperação roda sem travar nada e sem aparecer nenhum erro visível.
+7. Conferir na aba Financeiro que apareceu no extrato de "Movimentação de estoque" uma linha "📦 Descontou — Pedido #N" com os ingredientes certos do passo 5.
+8. Apagar o pedido de teste do passo 5 → conferir que o estoque do ingrediente voltou ao valor de antes, e que apareceu uma linha nova no extrato "↩️ Apagado — devolveu — Pedido #N" (o pedido em si já não existe mais, mas a linha do extrato continua lá).
+9. Aba Financeiro: preencher uma taxa de cartão (ex.: 3%), conferir que ela aparece descontada nos cards; conferir que os cards de Hoje/Semana/Mês aparecem, que o card do mês mostra Gastos fixos, Total comprado no período e Lucro líquido, e que o ranking de pratos mostra o prato do passo 4 — e que o prato do passo 6 aparece separado, marcado como custo incompleto, não no ranking.
+10. Cadastrar uma despesa fixa e conferir que ela entra na conta do card do mês.
+11. Fechar e reabrir o painel (recarregar a página) com algum pedido antigo sem `stockDeducted` (se houver) → conferir que a varredura de recuperação roda sem travar nada e sem aparecer nenhum erro visível.
 
 - [ ] **Step 3: Publicar as novas regras do Firestore**
 
