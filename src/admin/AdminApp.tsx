@@ -17,6 +17,11 @@ import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
+import { subscribeIngredients, subscribeIngredientPurchases, type Ingredient, type IngredientPurchase } from "./ingredients";
+import { subscribeRecipes, type Recipes } from "./recipes";
+import { subscribeFixedExpenses, type FixedExpense } from "./fixedExpenses";
+import { subscribePaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
+import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -132,7 +137,10 @@ function Dashboard({ user }: { user: User }) {
   const handleDeleteOrder = (order: OrderRecord) => {
     if (!window.confirm(`Apagar o Pedido #${order.orderNumber}? Essa ação não pode ser desfeita.`)) return;
     setDeletingOrderId(order.id);
-    deleteOrder(order.id).catch(() => window.alert("Não foi possível apagar esse pedido. Tenta de novo.")).finally(() => setDeletingOrderId(null));
+    restoreStockForOrder(order.id)
+      .then(() => deleteOrder(order.id))
+      .catch(() => setSaveError(`Não foi possível apagar o Pedido #${order.orderNumber} (falha ao devolver o estoque). Tenta de novo.`))
+      .finally(() => setDeletingOrderId(null));
   };
 
   // Impressora térmica (Bluetooth) — conecta uma vez, aí dá pra imprimir
@@ -143,6 +151,16 @@ function Dashboard({ user }: { user: User }) {
   const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
   const [autoPrint, setAutoPrint] = useState(() => { try { return localStorage.getItem("sooba_auto_print") === "1"; } catch { return false; } });
   const seenOrderIdsRef = useRef<Set<string> | null>(null);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  useEffect(() => subscribeIngredients(setIngredients), []);
+  const [ingredientPurchases, setIngredientPurchases] = useState<IngredientPurchase[]>([]);
+  useEffect(() => subscribeIngredientPurchases(setIngredientPurchases), []);
+  const [recipes, setRecipes] = useState<Recipes>({});
+  useEffect(() => subscribeRecipes(setRecipes), []);
+  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
+  useEffect(() => subscribeFixedExpenses(setFixedExpenses), []);
+  const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
+  useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
   const handleConnectPrinter = () => {
     setConnectingPrinter(true);
     connectPrinter()
@@ -446,17 +464,30 @@ function Dashboard({ user }: { user: User }) {
     if (!orders) return;
     if (seenOrderIdsRef.current === null) {
       seenOrderIdsRef.current = new Set(orders.map((order) => order.id));
+      // Varredura única: tenta descontar de novo o estoque de pedidos que já
+      // existiam mas nunca tiveram stockDeducted true (ex.: erro de rede numa
+      // sessão anterior). Silencioso de propósito — não é um problema novo,
+      // é recuperação de algo que já devia ter acontecido. deductStockForOrder
+      // é idempotente, então tentar de novo nunca duplica nada. Ignora
+      // qualquer pedido que esteja sendo apagado agora, pra não brigar com a
+      // devolução de estoque (ver handleDeleteOrder).
+      orders.filter((order) => !order.stockDeducted && order.id !== deletingOrderId).forEach((order) => {
+        deductStockForOrder(order.id).catch(() => {});
+      });
       return;
     }
     const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
     if (newOrders.length === 0) return;
     newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));
     if (soundEnabled) playNewOrderChime(soundVolume / 100);
+    newOrders.forEach((order) => {
+      deductStockForOrder(order.id).catch((error) => setSaveError(`Não consegui descontar o estoque do Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`));
+    });
     if (!autoPrint || !printerConn) return;
     newOrders.forEach((order) => {
       printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
     });
-  }, [orders, autoPrint, printerConn, soundEnabled, soundVolume]);
+  }, [orders, autoPrint, printerConn, soundEnabled, soundVolume, deletingOrderId]);
 
   useEffect(() => {
     const [year, month, day] = pickedDate.split("-").map(Number);
