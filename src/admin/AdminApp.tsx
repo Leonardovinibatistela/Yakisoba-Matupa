@@ -17,11 +17,13 @@ import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
-import { subscribeIngredients, subscribeIngredientPurchases, type Ingredient, type IngredientPurchase } from "./ingredients";
-import { subscribeRecipes, type Recipes } from "./recipes";
+import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
+import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
 import { subscribeFixedExpenses, type FixedExpense } from "./fixedExpenses";
 import { subscribePaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
 import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
+import IngredientsPanel from "./IngredientsPanel";
+import RecipeEditor from "./RecipeEditor";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
@@ -259,6 +261,7 @@ function Dashboard({ user }: { user: User }) {
   // descrição e foto juntos, num formulário só — "Salvar" grava tudo de
   // uma vez (não precisa apertar editar/salvar item por item de novo).
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [expandedRecipeItemId, setExpandedRecipeItemId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [priceDraft, setPriceDraft] = useState("");
   const [descriptionDraft, setDescriptionDraft] = useState("");
@@ -855,7 +858,9 @@ function Dashboard({ user }: { user: User }) {
                             <span className="text-xs text-white/50">{formatTotal(currentPrice)}</span>
                             <button type="button" onClick={() => startEditItem(item.id, currentName, currentPrice, currentDescription)} className="text-[10px] font-bold text-[#ff875c] underline decoration-dotted underline-offset-2 hover:text-white">Editar</button>
                             {hasAnyOverride && <button type="button" onClick={() => handleResetItemAll(item.id)} disabled={isSavingItem} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
+                            <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
                           </div>
+                          {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} onSave={setRecipe} />}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5">
                           <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
@@ -876,6 +881,8 @@ function Dashboard({ user }: { user: User }) {
             })}
           </div>
         </div>
+
+        <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
