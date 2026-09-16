@@ -46,7 +46,7 @@ export async function registerPurchase(ingredientId: string, quantity: number, t
     const data = snap.data() ?? {};
     const currentStock = (data.stock as number) ?? 0;
     const currentAvgCost = (data.avgCost as number) ?? 0;
-    const newAvgCost = computeWeightedAvgCost(currentStock, currentAvgCost, quantity, unitCost);
+    const newAvgCost = computeWeightedAvgCost(Math.max(0, currentStock), currentAvgCost, quantity, unitCost);
     transaction.update(ingredientRef, { stock: currentStock + quantity, avgCost: newAvgCost });
     transaction.set(purchaseRef, { ingredientId, quantity, totalCost, createdAt: serverTimestamp() });
   });

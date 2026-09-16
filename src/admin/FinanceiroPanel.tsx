@@ -57,7 +57,7 @@ function PeriodCard({ title, orders, showFixedExpenses, fixedExpensesTotal, purc
 }
 
 function PaymentFeesEditor({ paymentFeeRates, onSetPaymentFeeRates }: { paymentFeeRates: PaymentFeeRates; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({ pix: String(paymentFeeRates.pix * 100), cartao: String(paymentFeeRates.cartao * 100), dinheiro: String(paymentFeeRates.dinheiro * 100) });
+  const [drafts, setDrafts] = useState<Record<string, string>>({ pix: String(Number((paymentFeeRates.pix * 100).toFixed(4))), cartao: String(Number((paymentFeeRates.cartao * 100).toFixed(4))), dinheiro: String(Number((paymentFeeRates.dinheiro * 100).toFixed(4))) });
   const [saving, setSaving] = useState(false);
   const handleSave = () => {
     setSaving(true);

@@ -4,7 +4,7 @@ import { auth } from "../firebase";
 import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
 import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
 import { uploadImageToCloudinary } from "../cloudinary";
-import { menuSections } from "../menuData";
+import { addonSections, menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
 import { clearItemPrice, setItemPrice, subscribePriceOverrides } from "../priceOverrides";
 import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoOverrides";
@@ -479,10 +479,21 @@ function Dashboard({ user }: { user: User }) {
       // é recuperação de algo que já devia ter acontecido. deductStockForOrder
       // é idempotente, então tentar de novo nunca duplica nada. Ignora
       // qualquer pedido que esteja sendo apagado agora, pra não brigar com a
-      // devolução de estoque (ver handleDeleteOrder).
-      orders.filter((order) => !order.stockDeducted && order.id !== deletingOrderId).forEach((order) => {
-        deductStockForOrder(order.id).catch(() => {});
-      });
+      // devolução de estoque (ver handleDeleteOrder). Limitado a pedidos de
+      // HOJE — orders pode conter até um mês de histórico (ver
+      // subscribeToRecentOrders), e todo pedido anterior ao deploy dessa
+      // feature também está sem stockDeducted; varrer o mês inteiro gravaria
+      // ingredientCost: 0 permanentemente num backlog que nunca foi uma falha
+      // de verdade. Sequencial (não concorrente) pra não disparar várias
+      // transações simultâneas competindo pelos mesmos documentos de
+      // ingredients/*.
+      const todayStart = startOfDay(new Date());
+      const staleOrders = orders.filter((order) => !order.stockDeducted && order.id !== deletingOrderId && order.createdAt >= todayStart);
+      (async () => {
+        for (const order of staleOrders) {
+          await deductStockForOrder(order.id).catch(() => {});
+        }
+      })();
       return;
     }
     const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
@@ -534,7 +545,11 @@ function Dashboard({ user }: { user: User }) {
   const todayOrders = ordersInRange(orders, startOfDay(now));
   const weekOrders = ordersInRange(orders, startOfWeek(now));
   const monthOrders = ordersInRange(orders, startOfMonth(now));
-  const itemCatalog = menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price }));
+  const itemCatalog = [
+    ...menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price })),
+    ...addonSections.flatMap((section) => section.items).map((item) => ({ id: item.id, name: item.name, price: item.price })),
+    ...(dailyCombos ?? []).map((combo) => ({ id: combo.id, name: combo.name, price: combo.price })),
+  ];
   const monthPurchasesTotal = ingredientPurchases.filter((purchase) => purchase.createdAt >= startOfMonth(now)).reduce((total, purchase) => total + purchase.totalCost, 0);
   // O gráfico e o Top 3 aqui embaixo (dentro de "Rever outra data") seguem o
   // mês escolhido no calendário, não a semana atual — assim dá pra comparar
@@ -915,6 +930,32 @@ function Dashboard({ user }: { user: User }) {
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Ficha técnica dos adicionais</h2>
+          <p className="mt-1.5 text-sm text-white/50">Legumes e carnes extras que entram junto no pedido de yaki. Cadastra a ficha técnica de cada um pra entrar no custo real e sair da lista de "sem ficha técnica".</p>
+          <div className="mt-5 space-y-6">
+            {addonSections.map((section) => (
+              <div key={section.id}>
+                <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
+                  {section.items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm font-bold text-white">{item.name}</span>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
+                        </div>
+                        {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={item.name} ingredients={ingredients} recipe={recipes[item.id] ?? []} onSave={setRecipe} />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>
           <p className="mt-1.5 text-sm text-white/50">Um sabor novo de yakisoba, um combinado novo — o que for. Escolhe a seção, preenche e já aparece no site na hora.</p>
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
@@ -1005,6 +1046,8 @@ function Dashboard({ user }: { user: User }) {
                           ); })}
                         </div>
                         <p className="mt-1.5 text-[11px] text-white/40">{formatDaysLabel(combo.days)}</p>
+                        <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === combo.id ? null : combo.id)} className="mt-1.5 block text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[combo.id]?.length ? "" : " (vazia)"}</button>
+                        {expandedRecipeItemId === combo.id && <RecipeEditor itemId={combo.id} itemName={combo.name} ingredients={ingredients} recipe={recipes[combo.id] ?? []} onSave={setRecipe} />}
                       </div>
                       <button type="button" onClick={() => handleRemoveCombo(combo)} disabled={isRemovingCombo} className="shrink-0 text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50 sm:self-start">{isRemovingCombo ? "Removendo…" : "🗑 Remover combo"}</button>
                     </div>
