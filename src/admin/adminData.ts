@@ -14,6 +14,11 @@ export type OrderRecord = {
   paymentMethod: "pix" | "cartao" | "dinheiro" | "";
   deliveryType: "retirada" | "entrega" | "";
   location: string;
+  stockDeducted: boolean;
+  ingredientCost: number;
+  missingRecipeItemIds: string[];
+  incompleteCostItemIds: string[];
+  deductedIngredients: { ingredientId: string; quantity: number }[];
 };
 
 export function startOfDay(date: Date) {
@@ -48,7 +53,7 @@ function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
-    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, notes: data.notes ?? "", createdAt, paymentMethod: data.paymentMethod ?? "", deliveryType: data.deliveryType ?? "", location: data.location ?? "" };
+    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, notes: data.notes ?? "", createdAt, paymentMethod: data.paymentMethod ?? "", deliveryType: data.deliveryType ?? "", location: data.location ?? "", stockDeducted: data.stockDeducted ?? false, ingredientCost: data.ingredientCost ?? 0, missingRecipeItemIds: data.missingRecipeItemIds ?? [], incompleteCostItemIds: data.incompleteCostItemIds ?? [], deductedIngredients: data.deductedIngredients ?? [] };
   });
 }
 
