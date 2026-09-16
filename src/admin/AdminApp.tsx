@@ -19,18 +19,19 @@ import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection
 import { playNewOrderChime } from "./notificationSound";
 import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
-import { subscribeFixedExpenses, type FixedExpense } from "./fixedExpenses";
-import { subscribePaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
+import { subscribeFixedExpenses, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense } from "./fixedExpenses";
+import { subscribePaymentFeeRates, setPaymentFeeRates as persistPaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
 import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
 import IngredientsPanel from "./IngredientsPanel";
 import RecipeEditor from "./RecipeEditor";
+import FinanceiroPanel from "./FinanceiroPanel";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "cardapio" | "combos" | "fotos";
+type AdminTab = "visao" | "cardapio" | "combos" | "fotos" | "financeiro";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
@@ -38,6 +39,7 @@ const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
   { id: "fotos", label: "Fotos" },
+  { id: "financeiro", label: "Financeiro" },
 ];
 
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
@@ -528,6 +530,8 @@ function Dashboard({ user }: { user: User }) {
   const todayOrders = ordersInRange(orders, startOfDay(now));
   const weekOrders = ordersInRange(orders, startOfWeek(now));
   const monthOrders = ordersInRange(orders, startOfMonth(now));
+  const itemCatalog = menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price }));
+  const monthPurchasesTotal = ingredientPurchases.filter((purchase) => purchase.createdAt >= startOfMonth(now)).reduce((total, purchase) => total + purchase.totalCost, 0);
   // O gráfico e o Top 3 aqui embaixo (dentro de "Rever outra data") seguem o
   // mês escolhido no calendário, não a semana atual — assim dá pra comparar
   // qualquer mês passado, não só hoje.
@@ -779,6 +783,24 @@ function Dashboard({ user }: { user: User }) {
             </div>
           )}
         </div>}
+
+        {activeTab === "financeiro" && (
+          <FinanceiroPanel
+            todayOrders={todayOrders}
+            weekOrders={weekOrders}
+            monthOrders={monthOrders}
+            monthPurchasesTotal={monthPurchasesTotal}
+            ingredients={ingredients}
+            recipes={recipes}
+            fixedExpenses={fixedExpenses}
+            paymentFeeRates={paymentFeeRates}
+            itemCatalog={itemCatalog}
+            onAddFixedExpense={addFixedExpense}
+            onUpdateFixedExpense={updateFixedExpense}
+            onDeleteFixedExpense={deleteFixedExpense}
+            onSetPaymentFeeRates={persistPaymentFeeRates}
+          />
+        )}
 
         {activeTab === "cardapio" && <>
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
