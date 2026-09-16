@@ -40,6 +40,10 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
   const [minStockDrafts, setMinStockDrafts] = useState<Record<string, string>>({});
   const [savingMinStockId, setSavingMinStockId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const filteredIngredients = searchQuery.trim() === "" ? ingredients : ingredients.filter((ingredient) => normalize(ingredient.name).includes(normalize(searchQuery.trim())));
 
   const handleAddIngredient = () => {
     const name = newName.trim();
@@ -112,10 +116,17 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
         <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "+ Adicionar"}</button>
       </div>
 
+      <div className="mt-5">
+        <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Buscar ingrediente</label>
+        <input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Digite o nome, ex: coca, salmão…" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
+      </div>
+
       <div className="mt-4 divide-y divide-white/10 rounded-xl border border-white/10">
         {ingredients.length === 0 ? (
           <p className="p-4 text-sm text-white/50">Nenhum ingrediente cadastrado ainda.</p>
-        ) : ingredients.map((ingredient) => {
+        ) : filteredIngredients.length === 0 ? (
+          <p className="p-4 text-sm text-white/50">Nenhum ingrediente encontrado pra "{searchQuery.trim()}".</p>
+        ) : filteredIngredients.map((ingredient) => {
           const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
           const adjustDraft = adjustDrafts[ingredient.id];
           const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
