@@ -17,7 +17,9 @@
 - Aviso de preço de compra fora do normal (>3x ou <1/3 do custo médio atual) **não bloqueia** o salvamento, só confirma.
 - `order.ingredientCost` é gravado no momento da baixa de estoque e nunca recalculado depois (relatório de mês passado não deve mudar se o custo do ingrediente mudar hoje).
 - Gasto fixo só entra no card de **Mês** (não em Hoje/Semana).
-- Item de pedido sem ficha técnica cadastrada nunca conta como custo R$0 silenciosamente — sempre sinalizado.
+- Item de pedido sem ficha técnica cadastrada nunca conta como custo R$0 silenciosamente — sempre sinalizado. O mesmo vale pra item COM ficha técnica mas com algum ingrediente sem custo real (nunca comprado, ou apagado): nunca é tratado como custo R$0 sem aviso.
+- `deductStockForOrder` lê as receitas (`menuStatus/recipes`) direto do Firestore **dentro da própria transação** — nunca recebe receitas como parâmetro vindo do estado do React (evita corrida entre a assinatura de pedidos e a de receitas no carregamento do painel).
+- Editar/apagar uma compra (`ingredientPurchases`) recalcula `avgCost` do zero a partir do histórico que sobrou — nunca em cima do valor errado.
 - Qualquer mudança em `firestore.rules` é só editada localmente pelo agente — quem publica no Firebase Console é sempre o humano (regra permanente deste projeto).
 - Nomes de arquivo/commit em português, seguindo o padrão já usado no resto do projeto.
 
@@ -30,12 +32,12 @@
 - Modify: `firestore.rules` (adiciona regras de `ingredients` e `ingredientPurchases`)
 
 **Interfaces:**
-- Produces: `type IngredientUnit = "kg" | "l" | "un"`; `type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number }`; `type IngredientPurchase = { id: string; ingredientId: string; quantity: number; totalCost: number; createdAt: Date }`; `computeWeightedAvgCost(currentStock: number, currentAvgCost: number, purchaseQty: number, purchaseUnitCost: number): number`; `isPurchasePriceUnusual(newUnitCost: number, currentAvgCost: number): boolean`; `subscribeIngredients(onUpdate: (ingredients: Ingredient[]) => void, onError?: (error: unknown) => void): () => void`; `subscribeIngredientPurchases(onUpdate: (purchases: IngredientPurchase[]) => void, onError?: (error: unknown) => void): () => void`; `addIngredient(name: string, unit: IngredientUnit): Promise<void>`; `registerPurchase(ingredientId: string, quantity: number, totalCost: number): Promise<void>`; `adjustStock(ingredientId: string, newStock: number): Promise<void>`.
+- Produces: `type IngredientUnit = "kg" | "l" | "un"`; `type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number }`; `type IngredientPurchase = { id: string; ingredientId: string; quantity: number; totalCost: number; createdAt: Date }`; `computeWeightedAvgCost(currentStock: number, currentAvgCost: number, purchaseQty: number, purchaseUnitCost: number): number`; `computeAvgCostFromPurchases(purchases: { quantity: number; totalCost: number }[]): number`; `isPurchasePriceUnusual(newUnitCost: number, currentAvgCost: number): boolean`; `subscribeIngredients(onUpdate: (ingredients: Ingredient[]) => void, onError?: (error: unknown) => void): () => void`; `subscribeIngredientPurchases(onUpdate: (purchases: IngredientPurchase[]) => void, onError?: (error: unknown) => void): () => void`; `addIngredient(name: string, unit: IngredientUnit): Promise<void>`; `registerPurchase(ingredientId: string, quantity: number, totalCost: number): Promise<void>`; `adjustStock(ingredientId: string, newStock: number): Promise<void>`; `editPurchase(purchase: IngredientPurchase, newQuantity: number, newTotalCost: number): Promise<void>`; `deletePurchase(purchase: IngredientPurchase): Promise<void>`.
 
 - [ ] **Step 1: Escrever o arquivo `src/admin/ingredients.ts`**
 
 ```ts
-import { addDoc, collection, doc, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 export type IngredientUnit = "kg" | "l" | "un";
@@ -112,6 +114,42 @@ export function subscribeIngredientPurchases(onUpdate: (purchases: IngredientPur
     onError
   );
 }
+
+/** Custo médio recalculado do ZERO a partir de uma lista de compras — usado ao editar/apagar uma compra, pra nunca ficar em cima de um valor que já sabemos estar errado. */
+export function computeAvgCostFromPurchases(purchases: { quantity: number; totalCost: number }[]): number {
+  const totalQuantity = purchases.reduce((sum, purchase) => sum + purchase.quantity, 0);
+  if (totalQuantity <= 0) return 0;
+  const totalCost = purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0);
+  return totalCost / totalQuantity;
+}
+
+/** Recalcula avgCost do zero (a partir das compras que sobrarem) e ajusta o estoque pela diferença — usado tanto por editPurchase quanto por deletePurchase. newQuantity/newTotalCost nulos = apagar a compra. */
+async function savePurchaseEdit(purchaseId: string, ingredientId: string, oldQuantity: number, newQuantity: number | null, newTotalCost: number | null): Promise<void> {
+  const otherPurchasesSnap = await getDocs(query(ingredientPurchasesCollection, where("ingredientId", "==", ingredientId)));
+  const otherPurchases = otherPurchasesSnap.docs.filter((docSnap) => docSnap.id !== purchaseId).map((docSnap) => ({ quantity: (docSnap.data().quantity as number) ?? 0, totalCost: (docSnap.data().totalCost as number) ?? 0 }));
+  const remainingPurchases = newQuantity !== null && newTotalCost !== null ? [...otherPurchases, { quantity: newQuantity, totalCost: newTotalCost }] : otherPurchases;
+  const newAvgCost = computeAvgCostFromPurchases(remainingPurchases);
+  const stockDelta = (newQuantity ?? 0) - oldQuantity;
+  const ingredientRef = doc(db, "ingredients", ingredientId);
+  const purchaseRef = doc(db, "ingredientPurchases", purchaseId);
+  await runTransaction(db, async (transaction) => {
+    const ingredientSnap = await transaction.get(ingredientRef);
+    const currentStock = (ingredientSnap.data()?.stock as number) ?? 0;
+    transaction.update(ingredientRef, { stock: currentStock + stockDelta, avgCost: newAvgCost });
+    if (newQuantity !== null && newTotalCost !== null) transaction.update(purchaseRef, { quantity: newQuantity, totalCost: newTotalCost });
+    else transaction.delete(purchaseRef);
+  });
+}
+
+/** Corrige uma compra registrada errada (ex.: dígito a mais no valor). Recalcula avgCost do zero a partir do histórico — nunca fica em cima do valor errado. */
+export async function editPurchase(purchase: IngredientPurchase, newQuantity: number, newTotalCost: number): Promise<void> {
+  await savePurchaseEdit(purchase.id, purchase.ingredientId, purchase.quantity, newQuantity, newTotalCost);
+}
+
+/** Apaga uma compra lançada por engano. Devolve o estoque que ela tinha somado e recalcula avgCost do zero com o que sobrou. */
+export async function deletePurchase(purchase: IngredientPurchase): Promise<void> {
+  await savePurchaseEdit(purchase.id, purchase.ingredientId, purchase.quantity, null, null);
+}
 ```
 
 - [ ] **Step 2: Verificar as funções puras com um script Node avulso**
@@ -128,6 +166,19 @@ function isPurchasePriceUnusual(newUnitCost, currentAvgCost) {
   if (currentAvgCost <= 0) return false;
   return newUnitCost > currentAvgCost * 3 || newUnitCost < currentAvgCost / 3;
 }
+function computeAvgCostFromPurchases(purchases) {
+  const totalQuantity = purchases.reduce((sum, p) => sum + p.quantity, 0);
+  if (totalQuantity <= 0) return 0;
+  const totalCost = purchases.reduce((sum, p) => sum + p.totalCost, 0);
+  return totalCost / totalQuantity;
+}
+
+// Recalculo do zero: duas compras de 10kg a R$20 e 10kg a R$30 -> media R$25 (igual ao teste da media ponderada incremental)
+console.assert(computeAvgCostFromPurchases([{ quantity: 10, totalCost: 200 }, { quantity: 10, totalCost: 300 }]) === 25, "recalculo do zero bate com a media ponderada");
+// Sem nenhuma compra sobrando (apagou a unica que existia) -> 0, nao quebra dividindo por zero
+console.assert(computeAvgCostFromPurchases([]) === 0, "sem compras nao quebra");
+// Apagar a compra errada (a de R$5000 num lote de 5kg, deveria ser R$50) faz o custo medio voltar pro valor certo
+console.assert(computeAvgCostFromPurchases([{ quantity: 5, totalCost: 50 }]) === 10, "apagar compra errada recalcula certo");
 
 // Primeira compra: sem histórico, custo médio vira o próprio preço pago
 console.assert(computeWeightedAvgCost(0, 0, 10, 20) === 20, "primeira compra");
@@ -145,6 +196,8 @@ console.log("ingredients.ts: todas as checagens passaram");
 
 Run: `node scratch-ingredients-check.mjs`
 Expected: `ingredients.ts: todas as checagens passaram` sem nenhum erro de assert.
+
+(`editPurchase`/`deletePurchase`/`subscribeIngredientPurchases` não entram nesse script — dependem do Firestore de verdade, ficam pro checklist manual do Task 13.)
 
 - [ ] **Step 3: Apagar o script avulso**
 
@@ -178,7 +231,7 @@ Expected: sem erros.
 
 ```bash
 git add src/admin/ingredients.ts firestore.rules
-git commit -m "Adiciona dados de ingredientes: estoque, custo medio e registro de compras"
+git commit -m "Adiciona dados de ingredientes: estoque, custo medio, compras e correcao de compra"
 ```
 
 ---
@@ -239,14 +292,16 @@ git commit -m "Adiciona dados de ficha tecnica (receita) por prato"
 
 ---
 
-## Task 3: `src/admin/fixedExpenses.ts` — despesas fixas
+## Task 3: `src/admin/fixedExpenses.ts` + `src/admin/paymentFees.ts` — despesas fixas e taxa de pagamento
 
 **Files:**
 - Create: `src/admin/fixedExpenses.ts`
+- Create: `src/admin/paymentFees.ts`
 - Modify: `firestore.rules` (adiciona regra de `fixedExpenses`)
 
 **Interfaces:**
-- Produces: `type FixedExpense = { id: string; name: string; amount: number }`; `subscribeFixedExpenses(onUpdate: (expenses: FixedExpense[]) => void, onError?: (error: unknown) => void): () => void`; `addFixedExpense(name: string, amount: number): Promise<void>`; `updateFixedExpense(id: string, name: string, amount: number): Promise<void>`; `deleteFixedExpense(id: string): Promise<void>`.
+- Produces (`fixedExpenses.ts`): `type FixedExpense = { id: string; name: string; amount: number }`; `subscribeFixedExpenses(onUpdate: (expenses: FixedExpense[]) => void, onError?: (error: unknown) => void): () => void`; `addFixedExpense(name: string, amount: number): Promise<void>`; `updateFixedExpense(id: string, name: string, amount: number): Promise<void>`; `deleteFixedExpense(id: string): Promise<void>`.
+- Produces (`paymentFees.ts`): `type PaymentMethod = "pix" | "cartao" | "dinheiro"`; `type PaymentFeeRates = Record<PaymentMethod, number>` (fração, ex.: `0.035` = 3,5%); `subscribePaymentFeeRates(onUpdate: (rates: PaymentFeeRates) => void, onError?: (error: unknown) => void): () => void`; `setPaymentFeeRates(rates: PaymentFeeRates): Promise<void>`.
 
 - [ ] **Step 1: Escrever o arquivo `src/admin/fixedExpenses.ts`**
 
@@ -279,7 +334,36 @@ export async function deleteFixedExpense(id: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 2: Adicionar a regra do Firestore pra `fixedExpenses`**
+- [ ] **Step 2: Escrever o arquivo `src/admin/paymentFees.ts`**
+
+Segue o mesmo padrão de `src/recipes.ts` (documento único, com valor default quando ainda não foi configurado).
+
+```ts
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
+
+export type PaymentMethod = "pix" | "cartao" | "dinheiro";
+export type PaymentFeeRates = Record<PaymentMethod, number>;
+
+const DEFAULT_RATES: PaymentFeeRates = { pix: 0, cartao: 0, dinheiro: 0 };
+const paymentFeesRef = doc(db, "menuStatus", "paymentFees");
+
+export function subscribePaymentFeeRates(onUpdate: (rates: PaymentFeeRates) => void, onError?: (error: unknown) => void): () => void {
+  return onSnapshot(
+    paymentFeesRef,
+    (snap) => onUpdate(snap.exists() ? { ...DEFAULT_RATES, ...(snap.data().rates as Partial<PaymentFeeRates>) } : DEFAULT_RATES),
+    onError
+  );
+}
+
+export async function setPaymentFeeRates(rates: PaymentFeeRates): Promise<void> {
+  await setDoc(paymentFeesRef, { rates });
+}
+```
+
+(Sem regra nova no `firestore.rules` — `menuStatus/{document}` já cobre esse documento, igual `menuStatus/recipes`.)
+
+- [ ] **Step 3: Adicionar a regra do Firestore pra `fixedExpenses`**
 
 Em `firestore.rules` (mesmo bloco de antes):
 
@@ -291,16 +375,16 @@ Em `firestore.rules` (mesmo bloco de antes):
 
 **Não publique essa regra você mesmo** — mesma observação do Task 1.
 
-- [ ] **Step 3: Checar tipos**
+- [ ] **Step 4: Checar tipos**
 
 Run: `npx tsc --noEmit`
 Expected: sem erros.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/admin/fixedExpenses.ts firestore.rules
-git commit -m "Adiciona dados de despesas fixas"
+git add src/admin/fixedExpenses.ts src/admin/paymentFees.ts firestore.rules
+git commit -m "Adiciona dados de despesas fixas e taxa de pagamento por forma"
 ```
 
 ---
@@ -312,7 +396,9 @@ git commit -m "Adiciona dados de despesas fixas"
 
 **Interfaces:**
 - Consumes: `OrderLineItem` de `../orders` (campos `id: string; quantity: number`); `Recipes` de `./recipes`.
-- Produces: `type IngredientUsage = { usage: Record<string, number>; missingItemIds: string[] }`; `resolveRecipeItemId(rawId: string): string`; `computeIngredientUsage(items: OrderLineItem[], recipes: Recipes): IngredientUsage`.
+- Produces: `type ItemConsumption = { itemId: string; consumption: { ingredientId: string; quantity: number }[] }`; `type IngredientUsage = { consumptions: ItemConsumption[]; missingItemIds: string[] }`; `resolveRecipeItemId(rawId: string): string`; `computeIngredientUsage(items: OrderLineItem[], recipes: Recipes): IngredientUsage`; `totalUsageByIngredient(consumptions: ItemConsumption[]): Record<string, number>`.
+
+Nota: o retorno guarda o consumo **por item** (não só o total por ingrediente) de propósito — o Task 5 precisa saber, depois de olhar quais ingredientes têm custo confiável, **quais itens especificamente** ficam com custo incompleto (não dá pra saber isso só com o total agregado).
 
 - [ ] **Step 1: Escrever a parte pura do arquivo `src/admin/stockDeduction.ts`**
 
@@ -344,21 +430,27 @@ export function resolveRecipeItemId(rawId: string): string {
   return rawId;
 }
 
-export type IngredientUsage = { usage: Record<string, number>; missingItemIds: string[] };
+export type ItemConsumption = { itemId: string; consumption: { ingredientId: string; quantity: number }[] };
+export type IngredientUsage = { consumptions: ItemConsumption[]; missingItemIds: string[] };
 
-/** Soma quanto de cada ingrediente os itens de um pedido consomem, pela ficha técnica de cada prato. Item sem ficha técnica entra em missingItemIds e não soma nada. */
+/** Calcula, item por item, quanto de cada ingrediente ele consome pela ficha técnica. Item sem ficha técnica entra em missingItemIds e não gera consumo nenhum. */
 export function computeIngredientUsage(items: OrderLineItem[], recipes: Recipes): IngredientUsage {
-  const usage: Record<string, number> = {};
+  const consumptions: ItemConsumption[] = [];
   const missingItemIds: string[] = [];
   items.forEach((item) => {
     const recipeItemId = resolveRecipeItemId(item.id);
     const recipe = recipes[recipeItemId];
     if (!recipe || recipe.length === 0) { missingItemIds.push(recipeItemId); return; }
-    recipe.forEach(({ ingredientId, quantity }) => {
-      usage[ingredientId] = (usage[ingredientId] ?? 0) + quantity * item.quantity;
-    });
+    consumptions.push({ itemId: recipeItemId, consumption: recipe.map(({ ingredientId, quantity }) => ({ ingredientId, quantity: quantity * item.quantity })) });
   });
-  return { usage, missingItemIds };
+  return { consumptions, missingItemIds };
+}
+
+/** Soma o consumo por item num total por ingrediente — usado pra saber quanto descontar de cada ingrediente no estoque. */
+export function totalUsageByIngredient(consumptions: ItemConsumption[]): Record<string, number> {
+  const usage: Record<string, number> = {};
+  consumptions.forEach(({ consumption }) => consumption.forEach(({ ingredientId, quantity }) => { usage[ingredientId] = (usage[ingredientId] ?? 0) + quantity; }));
+  return usage;
 }
 ```
 
@@ -377,17 +469,20 @@ function resolveRecipeItemId(rawId) {
   return rawId;
 }
 function computeIngredientUsage(items, recipes) {
-  const usage = {};
+  const consumptions = [];
   const missingItemIds = [];
   items.forEach((item) => {
     const recipeItemId = resolveRecipeItemId(item.id);
     const recipe = recipes[recipeItemId];
     if (!recipe || recipe.length === 0) { missingItemIds.push(recipeItemId); return; }
-    recipe.forEach(({ ingredientId, quantity }) => {
-      usage[ingredientId] = (usage[ingredientId] ?? 0) + quantity * item.quantity;
-    });
+    consumptions.push({ itemId: recipeItemId, consumption: recipe.map(({ ingredientId, quantity }) => ({ ingredientId, quantity: quantity * item.quantity })) });
   });
-  return { usage, missingItemIds };
+  return { consumptions, missingItemIds };
+}
+function totalUsageByIngredient(consumptions) {
+  const usage = {};
+  consumptions.forEach(({ consumption }) => consumption.forEach(({ ingredientId, quantity }) => { usage[ingredientId] = (usage[ingredientId] ?? 0) + quantity; }));
+  return usage;
 }
 
 console.assert(resolveRecipeItemId("medio-frango") === "medio-frango", "id direto");
@@ -402,10 +497,14 @@ const items = [
   { id: "sem-ficha-tecnica", name: "Item sem receita", quantity: 1, unitPrice: 10, lineTotal: 10 },
 ];
 const result = computeIngredientUsage(items, recipes);
-console.assert(result.usage.frango === 1, `frango deveria ser 1, veio ${result.usage.frango}`);
-console.assert(result.usage.macarrao === 0.6, `macarrao deveria ser 0.6, veio ${result.usage.macarrao}`);
-console.assert(result.usage.brocolis === 0.1, `brocolis deveria ser 0.1, veio ${result.usage.brocolis}`);
+console.assert(result.consumptions.length === 2, `deveria ter 2 itens com consumo, veio ${result.consumptions.length}`);
 console.assert(result.missingItemIds.length === 1 && result.missingItemIds[0] === "sem-ficha-tecnica", "item sem ficha tecnica deveria estar em missingItemIds");
+const usage = totalUsageByIngredient(result.consumptions);
+console.assert(usage.frango === 1, `frango deveria ser 1, veio ${usage.frango}`);
+console.assert(usage.macarrao === 0.6, `macarrao deveria ser 0.6, veio ${usage.macarrao}`);
+console.assert(usage.brocolis === 0.1, `brocolis deveria ser 0.1, veio ${usage.brocolis}`);
+// O item "medio-frango#a1" (resolvido pra "medio-frango") tem que aparecer nos consumptions, pra o Task 5 saber marcar ele como incompleto se o ingrediente "frango" nao tiver custo cadastrado
+console.assert(result.consumptions.some((c) => c.itemId === "medio-frango"), "medio-frango deveria estar nos consumptions");
 
 console.log("stockDeduction.ts (parte pura): todas as checagens passaram");
 ```
@@ -428,7 +527,7 @@ Expected: sem erros.
 
 ```bash
 git add src/admin/stockDeduction.ts
-git commit -m "Adiciona calculo puro de consumo de ingrediente por pedido"
+git commit -m "Adiciona calculo puro de consumo de ingrediente por pedido, item por item"
 ```
 
 ---
@@ -439,14 +538,17 @@ git commit -m "Adiciona calculo puro de consumo de ingrediente por pedido"
 - Modify: `src/admin/stockDeduction.ts` (acrescenta ao arquivo do Task 4)
 
 **Interfaces:**
-- Consumes: `Recipes` de `./recipes`; `db` de `../firebase`; a coleção `orders` (campos `items`, `stockDeducted`) e `ingredients` (campos `stock`, `avgCost`) já existentes.
-- Produces: `deductStockForOrder(orderId: string, recipes: Recipes): Promise<void>`; `restoreStockForOrder(orderId: string): Promise<void>`.
+- Consumes: `db` de `../firebase`; a coleção `orders` (campos `items`, `stockDeducted`), `menuStatus/recipes` e `ingredients` (campos `stock`, `avgCost`) já existentes.
+- Produces: `deductStockForOrder(orderId: string): Promise<void>`; `restoreStockForOrder(orderId: string): Promise<void>`.
+
+Repare que `deductStockForOrder` **não recebe `recipes` como parâmetro** — ele lê o documento `menuStatus/recipes` direto do Firestore, dentro da própria transação, do mesmo jeito que já lê os ingredientes. Isso é de propósito: se recebesse `recipes` vindo do estado do React, existiria uma corrida real entre "chegou pedido novo" e "a assinatura de receitas no navegador ainda não tinha carregado" — e como `ingredientCost` nunca é recalculado depois (ver Global Constraints), um erro assim ficaria gravado pra sempre. Lendo direto do banco dentro da transação, esse risco não existe.
 
 - [ ] **Step 1: Acrescentar ao final de `src/admin/stockDeduction.ts`**
 
 ```ts
 import { doc, runTransaction } from "firebase/firestore";
 import { db } from "../firebase";
+import type { Recipes } from "./recipes";
 
 /**
  * Desconta do estoque os ingredientes usados por um pedido, e grava no
@@ -456,35 +558,49 @@ import { db } from "../firebase";
  * painel aberto em mais de um computador, a baixa acontece só uma vez: a
  * segunda tentativa relê o pedido, vê stockDeducted já true, e não faz nada.
  */
-export async function deductStockForOrder(orderId: string, recipes: Recipes): Promise<void> {
+export async function deductStockForOrder(orderId: string): Promise<void> {
   const orderRef = doc(db, "orders", orderId);
+  const recipesRef = doc(db, "menuStatus", "recipes");
   await runTransaction(db, async (transaction) => {
     const orderSnap = await transaction.get(orderRef);
     if (!orderSnap.exists()) return;
     const orderData = orderSnap.data();
     if (orderData.stockDeducted) return;
 
+    const recipesSnap = await transaction.get(recipesRef);
+    const recipes = (recipesSnap.exists() ? recipesSnap.data().recipes : {}) as Recipes;
+
     const items = (orderData.items as OrderLineItem[]) ?? [];
-    const { usage, missingItemIds } = computeIngredientUsage(items, recipes);
+    const { consumptions, missingItemIds } = computeIngredientUsage(items, recipes);
+    const usage = totalUsageByIngredient(consumptions);
     const ingredientIds = Object.keys(usage);
     const ingredientRefs = ingredientIds.map((id) => doc(db, "ingredients", id));
     const ingredientSnaps = await Promise.all(ingredientRefs.map((ref) => transaction.get(ref)));
 
     let totalCost = 0;
     const deductedIngredients: { ingredientId: string; quantity: number }[] = [];
+    const incompleteCostIngredientIds = new Set<string>();
     ingredientIds.forEach((ingredientId, index) => {
       const snap = ingredientSnaps[index];
-      if (!snap.exists()) return; // ingrediente ainda não cadastrado — ignora, não trava o pedido
-      const data = snap.data();
-      const currentStock = (data.stock as number) ?? 0;
-      const avgCost = (data.avgCost as number) ?? 0;
       const quantityUsed = usage[ingredientId];
+      const data = snap.exists() ? snap.data() : null;
+      const avgCost = (data?.avgCost as number) ?? 0;
+      // Ingrediente nunca comprado (avgCost 0) ou apagado depois de entrar
+      // na ficha técnica (doc não existe mais): a contribuição dele conta
+      // como 0 no custo, mas o item fica sinalizado como incompleto — NUNCA
+      // é tratado como "esse ingrediente realmente não custa nada".
+      if (!snap.exists() || avgCost <= 0) incompleteCostIngredientIds.add(ingredientId);
       totalCost += quantityUsed * avgCost;
-      deductedIngredients.push({ ingredientId, quantity: quantityUsed });
-      transaction.update(ingredientRefs[index], { stock: currentStock - quantityUsed });
+      if (snap.exists()) {
+        const currentStock = (data!.stock as number) ?? 0;
+        transaction.update(ingredientRefs[index], { stock: currentStock - quantityUsed });
+        deductedIngredients.push({ ingredientId, quantity: quantityUsed });
+      }
     });
 
-    transaction.update(orderRef, { stockDeducted: true, ingredientCost: totalCost, missingRecipeItemIds: missingItemIds, deductedIngredients });
+    const incompleteCostItemIds = consumptions.filter(({ consumption }) => consumption.some(({ ingredientId }) => incompleteCostIngredientIds.has(ingredientId))).map(({ itemId }) => itemId);
+
+    transaction.update(orderRef, { stockDeducted: true, ingredientCost: totalCost, missingRecipeItemIds: missingItemIds, incompleteCostItemIds, deductedIngredients });
   });
 }
 
@@ -517,7 +633,7 @@ export async function restoreStockForOrder(orderId: string): Promise<void> {
 }
 ```
 
-Repare que esse `import { doc, runTransaction } from "firebase/firestore";` e `import { db } from "../firebase";` devem ficar junto dos outros imports no topo do arquivo (não duplicar o import), junto com `import type { OrderLineItem } from "../orders";` já escrito no Task 4.
+Repare que esse `import { doc, runTransaction } from "firebase/firestore";`, `import { db } from "../firebase";` e `import type { Recipes } from "./recipes";` devem ficar junto dos outros imports no topo do arquivo (não duplicar o import), junto com `import type { OrderLineItem } from "../orders";` já escrito no Task 4.
 
 - [ ] **Step 2: Checar tipos**
 
@@ -528,7 +644,7 @@ Expected: sem erros.
 
 ```bash
 git add src/admin/stockDeduction.ts
-git commit -m "Adiciona baixa e devolucao transacional de estoque por pedido"
+git commit -m "Adiciona baixa e devolucao transacional de estoque, lendo receita direto do banco pra evitar corrida"
 ```
 
 (Sem verificação automatizada possível aqui — precisa de um banco Firestore de verdade. A verificação ao vivo fica no checklist manual do Task 13.)
@@ -541,7 +657,7 @@ git commit -m "Adiciona baixa e devolucao transacional de estoque por pedido"
 - Modify: `src/admin/adminData.ts`
 
 **Interfaces:**
-- Produces: `OrderRecord` ganha `stockDeducted: boolean; ingredientCost: number; missingRecipeItemIds: string[]; deductedIngredients: { ingredientId: string; quantity: number }[]`.
+- Produces: `OrderRecord` ganha `stockDeducted: boolean; ingredientCost: number; missingRecipeItemIds: string[]; incompleteCostItemIds: string[]; deductedIngredients: { ingredientId: string; quantity: number }[]`.
 
 - [ ] **Step 1: Adicionar os campos ao tipo `OrderRecord`**
 
@@ -551,6 +667,7 @@ Em `src/admin/adminData.ts`, no tipo `OrderRecord` (linha ~5-14), acrescente dep
   stockDeducted: boolean;
   ingredientCost: number;
   missingRecipeItemIds: string[];
+  incompleteCostItemIds: string[];
   deductedIngredients: { ingredientId: string; quantity: number }[];
 ```
 
@@ -559,7 +676,7 @@ Em `src/admin/adminData.ts`, no tipo `OrderRecord` (linha ~5-14), acrescente dep
 No `return { ... }` de `mapSnapshotToOrders` (linha ~48), acrescente antes do `};` final:
 
 ```ts
-, stockDeducted: data.stockDeducted ?? false, ingredientCost: data.ingredientCost ?? 0, missingRecipeItemIds: data.missingRecipeItemIds ?? [], deductedIngredients: data.deductedIngredients ?? []
+, stockDeducted: data.stockDeducted ?? false, ingredientCost: data.ingredientCost ?? 0, missingRecipeItemIds: data.missingRecipeItemIds ?? [], incompleteCostItemIds: data.incompleteCostItemIds ?? [], deductedIngredients: data.deductedIngredients ?? []
 ```
 
 (Cole isso logo antes do fechamento do objeto retornado — o resultado deve continuar sendo uma única linha de `return {...}`, igual ao resto do arquivo.)
@@ -584,7 +701,7 @@ git commit -m "Adiciona campos de estoque/custo ao OrderRecord"
 - Modify: `src/admin/AdminApp.tsx`
 
 **Interfaces:**
-- Consumes: `subscribeIngredients`, `subscribeIngredientPurchases`, `Ingredient`, `IngredientPurchase` de `./ingredients`; `subscribeRecipes`, `Recipes` de `./recipes`; `subscribeFixedExpenses`, `FixedExpense` de `./fixedExpenses`; `deductStockForOrder`, `restoreStockForOrder` de `./stockDeduction`.
+- Consumes: `subscribeIngredients`, `subscribeIngredientPurchases`, `Ingredient`, `IngredientPurchase` de `./ingredients`; `subscribeRecipes`, `Recipes` de `./recipes`; `subscribeFixedExpenses`, `FixedExpense` de `./fixedExpenses`; `deductStockForOrder`, `restoreStockForOrder` de `./stockDeduction`; `deletingOrderId` (estado já existente no componente).
 
 - [ ] **Step 1: Importar os módulos novos**
 
@@ -594,6 +711,7 @@ No topo de `src/admin/AdminApp.tsx`, junto dos outros imports de `./`:
 import { subscribeIngredients, subscribeIngredientPurchases, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, type Recipes } from "./recipes";
 import { subscribeFixedExpenses, type FixedExpense } from "./fixedExpenses";
+import { subscribePaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
 import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
 ```
 
@@ -608,19 +726,46 @@ const [recipes, setRecipes] = useState<Recipes>({});
 useEffect(() => subscribeRecipes(setRecipes), []);
 const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
 useEffect(() => subscribeFixedExpenses(setFixedExpenses), []);
+const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
+useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
 ```
 
-- [ ] **Step 3: Descontar estoque em pedido novo**
+- [ ] **Step 3: Descontar estoque em pedido novo — e recuperar baixa que falhou numa sessão anterior**
 
-No `useEffect` existente que detecta pedido novo (o que já toca o som e dispara a impressão automática — procure por `seenOrderIdsRef`), logo depois da linha `newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));`, acrescente:
+Troque o `useEffect` existente que detecta pedido novo (procure por `seenOrderIdsRef`):
 
 ```ts
-newOrders.forEach((order) => {
-  deductStockForOrder(order.id, recipes).catch((error) => setSaveError(`Não consegui descontar o estoque do Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`));
-});
+useEffect(() => {
+  if (!orders) return;
+  if (seenOrderIdsRef.current === null) {
+    seenOrderIdsRef.current = new Set(orders.map((order) => order.id));
+    // Varredura única: tenta descontar de novo o estoque de pedidos que já
+    // existiam mas nunca tiveram stockDeducted true (ex.: erro de rede numa
+    // sessão anterior). Silencioso de propósito — não é um problema novo,
+    // é recuperação de algo que já devia ter acontecido. deductStockForOrder
+    // é idempotente, então tentar de novo nunca duplica nada. Ignora
+    // qualquer pedido que esteja sendo apagado agora, pra não brigar com a
+    // devolução de estoque (ver handleDeleteOrder).
+    orders.filter((order) => !order.stockDeducted && order.id !== deletingOrderId).forEach((order) => {
+      deductStockForOrder(order.id).catch(() => {});
+    });
+    return;
+  }
+  const newOrders = orders.filter((order) => !seenOrderIdsRef.current!.has(order.id));
+  if (newOrders.length === 0) return;
+  newOrders.forEach((order) => seenOrderIdsRef.current!.add(order.id));
+  if (soundEnabled) playNewOrderChime(soundVolume / 100);
+  newOrders.forEach((order) => {
+    deductStockForOrder(order.id).catch((error) => setSaveError(`Não consegui descontar o estoque do Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`));
+  });
+  if (!autoPrint || !printerConn) return;
+  newOrders.forEach((order) => {
+    printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
+  });
+}, [orders, autoPrint, printerConn, soundEnabled, soundVolume, deletingOrderId]);
 ```
 
-E adicione `recipes` na lista de dependências desse `useEffect` (o array `[orders, autoPrint, printerConn, soundEnabled, soundVolume]` vira `[orders, autoPrint, printerConn, soundEnabled, soundVolume, recipes]`).
+(A única diferença do original é: a varredura única de recuperação dentro do `if (seenOrderIdsRef.current === null)`, e a chamada a `deductStockForOrder(order.id)` — sem parâmetro de receitas, já que agora ele lê direto do Firestore — logo depois do som, antes da impressão.)
 
 - [ ] **Step 4: Devolver estoque ao apagar pedido**
 
@@ -651,7 +796,7 @@ Expected: build termina sem erro (`✓ built in ...`).
 
 ```bash
 git add src/admin/AdminApp.tsx
-git commit -m "Liga baixa automatica e devolucao de estoque aos pedidos"
+git commit -m "Liga baixa automatica, devolucao e recuperacao de estoque aos pedidos"
 ```
 
 ---
@@ -662,18 +807,44 @@ git commit -m "Liga baixa automatica e devolucao de estoque aos pedidos"
 - Create: `src/admin/IngredientsPanel.tsx`
 
 **Interfaces:**
-- Consumes: `Ingredient`, `IngredientUnit`, `isPurchasePriceUnusual` de `./ingredients`.
-- Produces: componente `IngredientsPanel` com props `{ ingredients: Ingredient[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void> }`.
+- Consumes: `Ingredient`, `IngredientUnit`, `IngredientPurchase`, `isPurchasePriceUnusual` de `./ingredients`.
+- Produces: componente `IngredientsPanel` com props `{ ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }`.
 
 - [ ] **Step 1: Escrever `src/admin/IngredientsPanel.tsx`**
 
 ```tsx
 import { useState } from "react";
-import { isPurchasePriceUnusual, type Ingredient, type IngredientUnit } from "./ingredients";
+import { isPurchasePriceUnusual, type Ingredient, type IngredientPurchase, type IngredientUnit } from "./ingredients";
 
 const UNIT_LABELS: Record<IngredientUnit, string> = { kg: "kg", l: "litros", un: "unidades" };
 
-export default function IngredientsPanel({ ingredients, onAddIngredient, onRegisterPurchase, onAdjustStock }: { ingredients: Ingredient[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void> }) {
+function PurchaseHistoryRow({ purchase, unit, onEdit, onDelete }: { purchase: IngredientPurchase; unit: IngredientUnit; onEdit: (newQuantity: number, newTotalCost: number) => Promise<void>; onDelete: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [quantityDraft, setQuantityDraft] = useState(String(purchase.quantity));
+  const [totalCostDraft, setTotalCostDraft] = useState(String(purchase.totalCost));
+  const [saving, setSaving] = useState(false);
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 py-2">
+        <input type="text" inputMode="decimal" value={quantityDraft} onChange={(event) => setQuantityDraft(event.target.value)} className="w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#ff6b32]" />
+        <input type="text" inputMode="decimal" value={totalCostDraft} onChange={(event) => setTotalCostDraft(event.target.value)} className="w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#ff6b32]" />
+        <button type="button" disabled={saving} onClick={() => { const q = Number(quantityDraft.replace(",", ".")); const c = Number(totalCostDraft.replace(",", ".")); if (!q || q <= 0 || !c || c <= 0) return; setSaving(true); onEdit(q, c).then(() => setEditing(false)).finally(() => setSaving(false)); }} className="rounded-full border border-white/15 px-3 py-1 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:opacity-50">{saving ? "…" : "Salvar"}</button>
+        <button type="button" onClick={() => setEditing(false)} className="text-[11px] font-bold text-white/40 hover:text-white">Cancelar</button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-2 text-xs text-white/60">
+      <span>{purchase.createdAt.toLocaleDateString("pt-BR")}</span>
+      <span>{purchase.quantity.toLocaleString("pt-BR")} {UNIT_LABELS[unit]} por R${purchase.totalCost.toFixed(2)}</span>
+      <button type="button" onClick={() => setEditing(true)} className="text-[11px] font-bold text-[#ff875c] underline decoration-dotted underline-offset-2 hover:text-white">Editar</button>
+      <button type="button" onClick={() => { if (window.confirm("Apagar essa compra? O custo médio recalcula sozinho com o que sobrar.")) onDelete(); }} className="text-[11px] font-bold text-red-400/80 hover:text-red-300">🗑</button>
+    </div>
+  );
+}
+
+export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<IngredientUnit>("kg");
   const [addingIngredient, setAddingIngredient] = useState(false);
@@ -681,6 +852,7 @@ export default function IngredientsPanel({ ingredients, onAddIngredient, onRegis
   const [savingPurchaseId, setSavingPurchaseId] = useState<string | null>(null);
   const [adjustDrafts, setAdjustDrafts] = useState<Record<string, string>>({});
   const [savingAdjustId, setSavingAdjustId] = useState<string | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const handleAddIngredient = () => {
     const name = newName.trim();
@@ -718,7 +890,7 @@ export default function IngredientsPanel({ ingredients, onAddIngredient, onRegis
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
       <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Compras e custo</h2>
-      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Precisa corrigir a quantidade (perda, quebra)? Usa o ajuste manual, sem mexer no custo.</p>
+      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal (ex.: se veio uma caixa com 50 unidades, lança 50 — não 1 pelo preço da caixa inteira). Errou alguma compra? Edita ou apaga ela no histórico — o custo médio se ajusta sozinho. Precisa corrigir só a quantidade em estoque (perda, quebra)? Usa o ajuste manual, sem mexer no custo.</p>
 
       <div className="mt-5 flex flex-wrap items-end gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
         <div className="min-w-0 flex-1">
@@ -737,6 +909,7 @@ export default function IngredientsPanel({ ingredients, onAddIngredient, onRegis
         ) : ingredients.map((ingredient) => {
           const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
           const adjustDraft = adjustDrafts[ingredient.id];
+          const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
           return (
             <div key={ingredient.id} className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -744,6 +917,7 @@ export default function IngredientsPanel({ ingredients, onAddIngredient, onRegis
                   <span className="text-sm font-bold text-white">{ingredient.name}</span>
                   <span className="ml-2 text-xs text-white/50">{ingredient.stock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]} em estoque · custo médio R${ingredient.avgCost.toFixed(2)}/{UNIT_LABELS[ingredient.unit]}</span>
                 </div>
+                {history.length > 0 && <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>}
               </div>
               <div className="mt-3 flex flex-wrap items-end gap-2">
                 <div>
@@ -763,6 +937,11 @@ export default function IngredientsPanel({ ingredients, onAddIngredient, onRegis
                   <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
                 </div>
               </div>
+              {expandedHistoryId === ingredient.id && (
+                <div className="mt-3 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.02] px-3">
+                  {history.map((purchase) => <PurchaseHistoryRow key={purchase.id} purchase={purchase} unit={ingredient.unit} onEdit={(newQuantity, newTotalCost) => onEditPurchase(purchase, newQuantity, newTotalCost)} onDelete={() => onDeletePurchase(purchase)} />)}
+                </div>
+              )}
             </div>
           );
         })}
@@ -781,7 +960,7 @@ Expected: sem erros.
 
 ```bash
 git add src/admin/IngredientsPanel.tsx
-git commit -m "Adiciona painel de ingredientes e estoque (ainda nao usado em nenhuma tela)"
+git commit -m "Adiciona painel de ingredientes, estoque e historico de compras editavel (ainda nao usado em nenhuma tela)"
 ```
 
 ---
@@ -825,6 +1004,7 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, on
   return (
     <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
       <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Ficha técnica — {itemName}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-white/40">Usa a quantidade BRUTA (antes de limpar/descartar casca, osso etc.) — se 1kg de cebola crua rende só 850g limpa e o prato usa 100g limpa, lança ~118g de cebola aqui, não 100g.</p>
       <div className="mt-2 space-y-2">
         {draft.map((row, index) => {
           const ingredient = ingredients.find((candidate) => candidate.id === row.ingredientId);
@@ -869,14 +1049,14 @@ git commit -m "Adiciona editor de ficha tecnica por prato (ainda nao usado em ne
 - Modify: `src/admin/AdminApp.tsx`
 
 **Interfaces:**
-- Consumes: `IngredientsPanel` (Task 8), `RecipeEditor` (Task 9), `addIngredient`/`registerPurchase`/`adjustStock` de `./ingredients`, `setRecipe` de `./recipes`, estados `ingredients`/`recipes` já criados no Task 7.
+- Consumes: `IngredientsPanel` (Task 8), `RecipeEditor` (Task 9), `addIngredient`/`registerPurchase`/`adjustStock`/`editPurchase`/`deletePurchase` de `./ingredients`, `setRecipe` de `./recipes`, estados `ingredients`/`ingredientPurchases`/`recipes` já criados no Task 7.
 
 - [ ] **Step 1: Importar os componentes e funções de escrita**
 
 ```ts
 import IngredientsPanel from "./IngredientsPanel";
 import RecipeEditor from "./RecipeEditor";
-import { addIngredient, registerPurchase, adjustStock } from "./ingredients";
+import { addIngredient, registerPurchase, adjustStock, editPurchase, deletePurchase } from "./ingredients";
 import { setRecipe } from "./recipes";
 ```
 
@@ -917,7 +1097,7 @@ por:
 No fim do bloco "Cardápio" / "Preços e disponibilidade" (procure o `</div>` que fecha essa seção, logo antes do card "Adicionar item novo" — comentário no arquivo já diz `<div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">\n<p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>\n<h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>`), adicione logo antes desse card:
 
 ```tsx
-<IngredientsPanel ingredients={ingredients} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} />
+<IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
 ```
 
 - [ ] **Step 5: Checar tipos**
@@ -945,8 +1125,8 @@ git commit -m "Liga ingredientes e ficha tecnica na aba Cardapio do admin"
 - Create: `src/admin/FinanceiroPanel.tsx`
 
 **Interfaces:**
-- Consumes: `OrderRecord` de `./adminData`; `Ingredient` de `./ingredients`; `Recipes`, `RecipeIngredient` de `./recipes`; `FixedExpense` de `./fixedExpenses`.
-- Produces: componente `FinanceiroPanel` com props `{ todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void> }`.
+- Consumes: `OrderRecord` de `./adminData`; `Ingredient` de `./ingredients`; `Recipes`, `RecipeIngredient` de `./recipes`; `FixedExpense` de `./fixedExpenses`; `PaymentMethod`, `PaymentFeeRates` de `./paymentFees`.
+- Produces: componente `FinanceiroPanel` com props `{ todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; paymentFeeRates: PaymentFeeRates; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }`.
 
 - [ ] **Step 1: Escrever `src/admin/FinanceiroPanel.tsx`**
 
@@ -956,45 +1136,86 @@ import type { OrderRecord } from "./adminData";
 import type { Ingredient } from "./ingredients";
 import type { Recipes } from "./recipes";
 import type { FixedExpense } from "./fixedExpenses";
+import type { PaymentFeeRates } from "./paymentFees";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const PAYMENT_LABELS: Record<keyof PaymentFeeRates, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
+
 const sumRevenue = (orders: OrderRecord[]) => orders.reduce((total, order) => total + order.total, 0);
 const sumIngredientCost = (orders: OrderRecord[]) => orders.reduce((total, order) => total + order.ingredientCost, 0);
-const countMissingRecipeOrders = (orders: OrderRecord[]) => orders.filter((order) => order.missingRecipeItemIds.length > 0).length;
+const sumPaymentFees = (orders: OrderRecord[], rates: PaymentFeeRates) => orders.reduce((total, order) => total + order.total * (rates[order.paymentMethod as keyof PaymentFeeRates] ?? 0), 0);
+const countFlaggedOrders = (orders: OrderRecord[]) => orders.filter((order) => order.missingRecipeItemIds.length > 0 || order.incompleteCostItemIds.length > 0).length;
 const sumFixedExpenses = (fixedExpenses: FixedExpense[]) => fixedExpenses.reduce((total, expense) => total + expense.amount, 0);
 
-/** Custo atual de um prato pela ficha técnica de hoje (não é o custo histórico do que já foi vendido). */
-function currentRecipeCost(itemId: string, recipes: Recipes, ingredients: Ingredient[]): number | null {
+/**
+ * Custo atual de um prato pela ficha técnica de hoje (não é o custo
+ * histórico do que já foi vendido). `complete: false` quando algum
+ * ingrediente da receita não tem custo real (nunca comprado, ou apagado) —
+ * nesse caso `cost` ainda é um número, mas NUNCA deve ser mostrado como se
+ * fosse confiável.
+ */
+function currentRecipeCost(itemId: string, recipes: Recipes, ingredients: Ingredient[]): { cost: number; complete: boolean } | null {
   const recipe = recipes[itemId];
   if (!recipe || recipe.length === 0) return null;
-  return recipe.reduce((total, entry) => {
+  let complete = true;
+  const cost = recipe.reduce((total, entry) => {
     const ingredient = ingredients.find((candidate) => candidate.id === entry.ingredientId);
+    if (!ingredient || ingredient.avgCost <= 0) complete = false;
     return total + entry.quantity * (ingredient?.avgCost ?? 0);
   }, 0);
+  return { cost, complete };
 }
 
-function PeriodCard({ title, orders, showFixedExpenses, fixedExpensesTotal, purchasesTotal }: { title: string; orders: OrderRecord[]; showFixedExpenses: boolean; fixedExpensesTotal: number; purchasesTotal?: number }) {
+function PeriodCard({ title, orders, showFixedExpenses, fixedExpensesTotal, purchasesTotal, paymentFeeRates }: { title: string; orders: OrderRecord[]; showFixedExpenses: boolean; fixedExpensesTotal: number; purchasesTotal?: number; paymentFeeRates: PaymentFeeRates }) {
   const bruto = sumRevenue(orders);
   const custoVariavel = sumIngredientCost(orders);
-  const margem = bruto - custoVariavel;
+  const taxaPagamento = sumPaymentFees(orders, paymentFeeRates);
+  const margem = bruto - custoVariavel - taxaPagamento;
   const liquido = margem - fixedExpensesTotal;
-  const missingCount = countMissingRecipeOrders(orders);
+  const flaggedCount = countFlaggedOrders(orders);
   return (
     <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{title}</p>
       <p className="mt-2 text-xs text-white/55">Bruto <span className="font-bold text-white">{formatTotal(bruto)}</span></p>
       <p className="mt-1 text-xs text-white/55">Custo variável (pelas vendas) <span className="font-bold text-white">{formatTotal(custoVariavel)}</span></p>
+      <p className="mt-1 text-xs text-white/55">Taxa de pagamento <span className="font-bold text-white">{formatTotal(taxaPagamento)}</span></p>
       {purchasesTotal !== undefined && <p className="mt-1 text-xs text-white/40">Total comprado no período <span className="font-bold text-white/70">{formatTotal(purchasesTotal)}</span> <span className="text-[10px]">(aproximado — inclui compra que ainda não foi vendida)</span></p>}
       {showFixedExpenses && <p className="mt-1 text-xs text-white/55">Gastos fixos <span className="font-bold text-white">{formatTotal(fixedExpensesTotal)}</span></p>}
       <p className="mt-2 font-display text-xl font-extrabold text-[#ff875c]">{showFixedExpenses ? formatTotal(liquido) : formatTotal(margem)}</p>
-      <p className="text-[10px] text-white/40">{showFixedExpenses ? "lucro líquido" : "margem (bruto − custo variável)"}</p>
-      {missingCount > 0 && <p className="mt-2 text-[11px] text-amber-300/80">⚠️ {missingCount} pedido{missingCount === 1 ? "" : "s"} com prato sem ficha técnica — custo pode estar subestimado.</p>}
+      <p className="text-[10px] text-white/40">{showFixedExpenses ? "lucro líquido" : "margem (bruto − custo variável − taxa)"}</p>
+      {flaggedCount > 0 && <p className="mt-2 text-[11px] text-amber-300/80">⚠️ {flaggedCount} pedido{flaggedCount === 1 ? "" : "s"} com prato sem ficha técnica ou com ingrediente sem custo cadastrado — custo pode estar subestimado.</p>}
     </div>
   );
 }
 
-export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void> }) {
+function PaymentFeesEditor({ paymentFeeRates, onSetPaymentFeeRates }: { paymentFeeRates: PaymentFeeRates; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({ pix: String(paymentFeeRates.pix * 100), cartao: String(paymentFeeRates.cartao * 100), dinheiro: String(paymentFeeRates.dinheiro * 100) });
+  const [saving, setSaving] = useState(false);
+  const handleSave = () => {
+    setSaving(true);
+    const rates: PaymentFeeRates = { pix: (Number(drafts.pix.replace(",", ".")) || 0) / 100, cartao: (Number(drafts.cartao.replace(",", ".")) || 0) / 100, dinheiro: (Number(drafts.dinheiro.replace(",", ".")) || 0) / 100 };
+    onSetPaymentFeeRates(rates).finally(() => setSaving(false));
+  };
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#171211] p-6">
+      <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Taxa de pagamento</p>
+      <h3 className="mt-1 font-display text-lg font-extrabold tracking-[-.03em]">Quanto a maquininha/plataforma come de cada venda</h3>
+      <p className="mt-1.5 text-sm text-white/50">Em porcentagem do valor do pedido. Deixa 0 pra forma de pagamento que não tem taxa (ex.: Pix, dinheiro).</p>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        {(Object.keys(PAYMENT_LABELS) as (keyof PaymentFeeRates)[]).map((method) => (
+          <div key={method}>
+            <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{PAYMENT_LABELS[method]} (%)</label>
+            <input type="text" inputMode="decimal" value={drafts[method]} onChange={(event) => setDrafts((current) => ({ ...current, [method]: event.target.value }))} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+          </div>
+        ))}
+        <button type="button" onClick={handleSave} disabled={saving} className="rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50">{saving ? "Salvando…" : "Salvar"}</button>
+      </div>
+    </div>
+  );
+}
+
+export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, paymentFeeRates, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense, onSetPaymentFeeRates }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; paymentFeeRates: PaymentFeeRates; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
   const [newExpenseName, setNewExpenseName] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
   const [addingExpense, setAddingExpense] = useState(false);
@@ -1019,12 +1240,13 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
     onUpdateFixedExpense(expense.id, draft.name.trim(), amount).finally(() => setSavingExpenseId(null));
   };
 
-  const ranking = itemCatalog
-    .map((item) => ({ ...item, cost: currentRecipeCost(item.id, recipes, ingredients) }))
-    .filter((item) => item.cost !== null)
-    .map((item) => ({ ...item, margin: item.price - (item.cost as number) }))
+  const costByItem = itemCatalog.map((item) => ({ item, result: currentRecipeCost(item.id, recipes, ingredients) }));
+  const ranking = costByItem
+    .filter(({ result }) => result !== null && result.complete)
+    .map(({ item, result }) => ({ ...item, cost: result!.cost, margin: item.price - result!.cost }))
     .sort((a, b) => b.margin - a.margin);
-  const itemsWithoutRecipe = itemCatalog.filter((item) => currentRecipeCost(item.id, recipes, ingredients) === null);
+  const incompleteCostItems = costByItem.filter(({ result }) => result !== null && !result.complete).map(({ item }) => item);
+  const itemsWithoutRecipe = costByItem.filter(({ result }) => result === null).map(({ item }) => item);
 
   return (
     <div className="space-y-8">
@@ -1032,11 +1254,13 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
         <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Financeiro</p>
         <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Bruto, custo e lucro real</h2>
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <PeriodCard title="Hoje" orders={todayOrders} showFixedExpenses={false} fixedExpensesTotal={0} />
-          <PeriodCard title="Essa semana" orders={weekOrders} showFixedExpenses={false} fixedExpensesTotal={0} />
-          <PeriodCard title="Esse mês" orders={monthOrders} showFixedExpenses fixedExpensesTotal={fixedExpensesTotal} purchasesTotal={monthPurchasesTotal} />
+          <PeriodCard title="Hoje" orders={todayOrders} showFixedExpenses={false} fixedExpensesTotal={0} paymentFeeRates={paymentFeeRates} />
+          <PeriodCard title="Essa semana" orders={weekOrders} showFixedExpenses={false} fixedExpensesTotal={0} paymentFeeRates={paymentFeeRates} />
+          <PeriodCard title="Esse mês" orders={monthOrders} showFixedExpenses fixedExpensesTotal={fixedExpensesTotal} purchasesTotal={monthPurchasesTotal} paymentFeeRates={paymentFeeRates} />
         </div>
       </div>
+
+      <PaymentFeesEditor paymentFeeRates={paymentFeeRates} onSetPaymentFeeRates={onSetPaymentFeeRates} />
 
       <div className="rounded-2xl border border-white/10 bg-[#171211] p-6">
         <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Despesas fixas</p>
@@ -1078,7 +1302,8 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
             </div>
           ))}
         </div>
-        {itemsWithoutRecipe.length > 0 && <p className="mt-3 text-[11px] text-white/40">{itemsWithoutRecipe.length} prato{itemsWithoutRecipe.length === 1 ? "" : "s"} sem ficha técnica ainda (não aparecem no ranking): {itemsWithoutRecipe.map((item) => item.name).join(", ")}</p>}
+        {incompleteCostItems.length > 0 && <p className="mt-3 text-[11px] text-amber-300/80">⚠️ {incompleteCostItems.length} prato{incompleteCostItems.length === 1 ? "" : "s"} com ficha técnica cadastrada mas custo incompleto (ingrediente nunca comprado ou apagado) — custo pode estar subestimado: {incompleteCostItems.map((item) => item.name).join(", ")}</p>}
+        {itemsWithoutRecipe.length > 0 && <p className="mt-2 text-[11px] text-white/40">{itemsWithoutRecipe.length} prato{itemsWithoutRecipe.length === 1 ? "" : "s"} sem ficha técnica ainda (não aparecem no ranking): {itemsWithoutRecipe.map((item) => item.name).join(", ")}</p>}
       </div>
     </div>
   );
@@ -1094,7 +1319,7 @@ Expected: sem erros.
 
 ```bash
 git add src/admin/FinanceiroPanel.tsx
-git commit -m "Adiciona painel financeiro (ainda nao usado em nenhuma tela)"
+git commit -m "Adiciona painel financeiro com taxa de pagamento e custo incompleto sinalizado (ainda nao usado em nenhuma tela)"
 ```
 
 ---
@@ -1105,13 +1330,14 @@ git commit -m "Adiciona painel financeiro (ainda nao usado em nenhuma tela)"
 - Modify: `src/admin/AdminApp.tsx`
 
 **Interfaces:**
-- Consumes: `FinanceiroPanel` (Task 11); `fixedExpenses`/`ingredients`/`recipes`/`ingredientPurchases` já em estado (Task 7); `addFixedExpense`/`updateFixedExpense`/`deleteFixedExpense` de `./fixedExpenses`; `todayOrders`/`weekOrders`/`monthOrders`/`now` já calculados no `Dashboard`; `menuSections` de `../menuData`, `customItems`, `nameOverrides`, `priceOverrides` já existentes.
+- Consumes: `FinanceiroPanel` (Task 11); `fixedExpenses`/`ingredients`/`recipes`/`ingredientPurchases`/`paymentFeeRates` já em estado (Task 7); `addFixedExpense`/`updateFixedExpense`/`deleteFixedExpense` de `./fixedExpenses`; `setPaymentFeeRates` de `./paymentFees`; `todayOrders`/`weekOrders`/`monthOrders`/`now` já calculados no `Dashboard`; `menuSections` de `../menuData`, `customItems`, `nameOverrides`, `priceOverrides` já existentes.
 
 - [ ] **Step 1: Importar**
 
 ```ts
 import FinanceiroPanel from "./FinanceiroPanel";
 import { addFixedExpense, updateFixedExpense, deleteFixedExpense } from "./fixedExpenses";
+import { setPaymentFeeRates } from "./paymentFees";
 ```
 
 - [ ] **Step 2: Adicionar "financeiro" ao tipo de aba e à lista de abas**
@@ -1159,10 +1385,12 @@ Depois do bloco `{activeTab === "fotos" && <>...</>}` (ou onde as abas são rend
     ingredients={ingredients}
     recipes={recipes}
     fixedExpenses={fixedExpenses}
+    paymentFeeRates={paymentFeeRates}
     itemCatalog={itemCatalog}
     onAddFixedExpense={addFixedExpense}
     onUpdateFixedExpense={updateFixedExpense}
     onDeleteFixedExpense={deleteFixedExpense}
+    onSetPaymentFeeRates={setPaymentFeeRates}
   />
 )}
 ```
@@ -1200,11 +1428,14 @@ Expected: os dois terminam sem erro.
 Documentar (não executar automaticamente) os seguintes passos pro humano confirmar depois do deploy, logado de verdade no painel:
 1. Aba Cardápio → "Ingredientes e Estoque": cadastrar um ingrediente, registrar uma compra, conferir que o estoque e o custo médio atualizaram.
 2. Tentar registrar uma compra com preço bem diferente do custo médio → confirmar que aparece o aviso.
-3. Em um prato do cardápio, clicar "🧂 Ficha técnica", adicionar um ingrediente com quantidade, salvar, reabrir e confirmar que salvou.
-4. Simular um pedido de teste com esse prato → conferir no Firestore (ou reabrindo o pedido) que `stockDeducted` virou `true`, o estoque do ingrediente baixou, e `ingredientCost` foi gravado.
-5. Apagar esse pedido de teste → conferir que o estoque do ingrediente voltou ao valor de antes.
-6. Aba Financeiro: conferir que os cards de Hoje/Semana/Mês aparecem, que o card do mês mostra Gastos fixos, Total comprado no período e Lucro líquido, e que o ranking de pratos mostra o prato cadastrado no passo 3.
-7. Cadastrar uma despesa fixa e conferir que ela entra na conta do card do mês.
+3. Registrar uma segunda compra do mesmo ingrediente, depois abrir o histórico e **editar** a primeira compra pra um valor diferente → conferir que o custo médio recalculou certo (não incremental). Apagar uma compra do histórico → conferir que o estoque volta e o custo médio recalcula sem ela.
+4. Em um prato do cardápio, clicar "🧂 Ficha técnica", adicionar um ingrediente com quantidade, salvar, reabrir e confirmar que salvou.
+5. Simular um pedido de teste com esse prato → conferir no Firestore (ou reabrindo o pedido) que `stockDeducted` virou `true`, o estoque do ingrediente baixou, e `ingredientCost` foi gravado.
+6. Cadastrar um segundo prato com ficha técnica usando um ingrediente **recém-criado sem nenhuma compra ainda** (custo médio 0) → simular um pedido com ele e conferir que `incompleteCostItemIds` grava esse item, e que o Financeiro mostra o aviso de custo incompleto (não custo R$0 silencioso).
+7. Apagar o pedido de teste do passo 5 → conferir que o estoque do ingrediente voltou ao valor de antes.
+8. Aba Financeiro: preencher uma taxa de cartão (ex.: 3%), conferir que ela aparece descontada nos cards; conferir que os cards de Hoje/Semana/Mês aparecem, que o card do mês mostra Gastos fixos, Total comprado no período e Lucro líquido, e que o ranking de pratos mostra o prato do passo 4 — e que o prato do passo 6 aparece separado, marcado como custo incompleto, não no ranking.
+9. Cadastrar uma despesa fixa e conferir que ela entra na conta do card do mês.
+10. Fechar e reabrir o painel (recarregar a página) com algum pedido antigo sem `stockDeducted` (se houver) → conferir que a varredura de recuperação roda sem travar nada e sem aparecer nenhum erro visível.
 
 - [ ] **Step 3: Publicar as novas regras do Firestore**
 
