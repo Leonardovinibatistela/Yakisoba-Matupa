@@ -2,7 +2,7 @@ import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, runTransa
 import { db } from "../firebase";
 
 export type IngredientUnit = "kg" | "l" | "un";
-export type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number };
+export type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number; minStock: number | null };
 export type IngredientPurchase = { id: string; ingredientId: string; quantity: number; totalCost: number; createdAt: Date };
 
 /** Novo custo médio por unidade depois de somar uma compra ao estoque existente — média ponderada simples (sem FIFO/lote). */
@@ -25,7 +25,7 @@ export function subscribeIngredients(onUpdate: (ingredients: Ingredient[]) => vo
     query(ingredientsCollection, orderBy("name")),
     (snapshot) => onUpdate(snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
-      return { id: docSnap.id, name: data.name ?? "", unit: (data.unit ?? "un") as IngredientUnit, stock: data.stock ?? 0, avgCost: data.avgCost ?? 0 };
+      return { id: docSnap.id, name: data.name ?? "", unit: (data.unit ?? "un") as IngredientUnit, stock: data.stock ?? 0, avgCost: data.avgCost ?? 0, minStock: (data.minStock as number) ?? null };
     })),
     onError
   );
@@ -55,6 +55,11 @@ export async function registerPurchase(ingredientId: string, quantity: number, t
 /** Corrige a quantidade em estoque na mão (perda, quebra, gastou mais que o previsto) sem mexer no custo médio. */
 export async function adjustStock(ingredientId: string, newStock: number): Promise<void> {
   await updateDoc(doc(db, "ingredients", ingredientId), { stock: newStock });
+}
+
+/** Define o estoque mínimo (o que dispara "precisa comprar" na lista de compras). null remove o mínimo (ingrediente some da lista de "precisa comprar", mas continua na lista geral ordenada). */
+export async function setMinStock(ingredientId: string, minStock: number | null): Promise<void> {
+  await updateDoc(doc(db, "ingredients", ingredientId), { minStock });
 }
 
 const ingredientPurchasesCollection = collection(db, "ingredientPurchases");

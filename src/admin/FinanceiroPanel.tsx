@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { OrderRecord } from "./adminData";
 import type { Ingredient } from "./ingredients";
 import type { Recipes } from "./recipes";
-import type { FixedExpense } from "./fixedExpenses";
+import type { FixedExpense, FixedExpenseHistoryEntry } from "./fixedExpenses";
 import type { PaymentFeeRates } from "./paymentFees";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -14,6 +14,12 @@ const sumIngredientCost = (orders: OrderRecord[]) => orders.reduce((total, order
 const sumPaymentFees = (orders: OrderRecord[], rates: PaymentFeeRates) => orders.reduce((total, order) => total + order.total * (rates[order.paymentMethod as keyof PaymentFeeRates] ?? 0), 0);
 const countFlaggedOrders = (orders: OrderRecord[]) => orders.filter((order) => order.missingRecipeItemIds.length > 0 || order.incompleteCostItemIds.length > 0).length;
 const sumFixedExpenses = (fixedExpenses: FixedExpense[]) => fixedExpenses.reduce((total, expense) => total + expense.amount, 0);
+
+/** Valor que uma despesa fixa tinha no mês passado — o registro mais recente do histórico com data antes do início do mês atual (history já vem mais recente primeiro). null se não tem nenhum registro de antes desse mês. */
+function lastMonthAmount(expenseId: string, history: FixedExpenseHistoryEntry[], monthStart: Date): number | null {
+  const priorEntry = history.find((entry) => entry.expenseId === expenseId && entry.recordedAt < monthStart);
+  return priorEntry ? priorEntry.amount : null;
+}
 
 /**
  * Custo atual de um prato pela ficha técnica de hoje (não é o custo
@@ -82,7 +88,7 @@ function PaymentFeesEditor({ paymentFeeRates, onSetPaymentFeeRates }: { paymentF
   );
 }
 
-export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, paymentFeeRates, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense, onSetPaymentFeeRates }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; paymentFeeRates: PaymentFeeRates; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
+export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, fixedExpenseHistory, paymentFeeRates, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense, onSetPaymentFeeRates }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; fixedExpenseHistory: FixedExpenseHistoryEntry[]; paymentFeeRates: PaymentFeeRates; itemCatalog: { id: string; name: string; price: number }[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
   const [newExpenseName, setNewExpenseName] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
   const [addingExpense, setAddingExpense] = useState(false);
@@ -90,6 +96,7 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
   const [savingExpenseId, setSavingExpenseId] = useState<string | null>(null);
 
   const fixedExpensesTotal = sumFixedExpenses(fixedExpenses);
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
   const handleAddExpense = () => {
     const name = newExpenseName.trim();
@@ -137,10 +144,12 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
             <p className="p-4 text-sm text-white/50">Nenhuma despesa fixa cadastrada ainda.</p>
           ) : fixedExpenses.map((expense) => {
             const draft = editDrafts[expense.id] ?? { name: expense.name, amount: String(expense.amount) };
+            const lastMonth = lastMonthAmount(expense.id, fixedExpenseHistory, monthStart);
             return (
               <div key={expense.id} className="flex flex-wrap items-center gap-2 p-3">
                 <input type="text" value={draft.name} onChange={(event) => setEditDrafts((current) => ({ ...current, [expense.id]: { ...draft, name: event.target.value } }))} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
                 <input type="text" inputMode="decimal" value={draft.amount} onChange={(event) => setEditDrafts((current) => ({ ...current, [expense.id]: { ...draft, amount: event.target.value } }))} className="w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                {lastMonth !== null && <span className="text-[10px] text-white/40">mês passado: {formatTotal(lastMonth)}</span>}
                 <button type="button" onClick={() => handleSaveExpense(expense)} disabled={savingExpenseId === expense.id} className="rounded-full border border-white/15 px-3 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingExpenseId === expense.id ? "…" : "Salvar"}</button>
                 <button type="button" onClick={() => onDeleteFixedExpense(expense.id)} className="text-[11px] font-bold text-red-400/80 hover:text-red-300">🗑</button>
               </div>

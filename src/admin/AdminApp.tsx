@@ -17,9 +17,9 @@ import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
-import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
+import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
-import { subscribeFixedExpenses, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense } from "./fixedExpenses";
+import { subscribeFixedExpenses, subscribeFixedExpenseHistory, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense, type FixedExpenseHistoryEntry } from "./fixedExpenses";
 import { subscribePaymentFeeRates, setPaymentFeeRates as persistPaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
 import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
 import { subscribeStockMovements, type StockMovement } from "./stockMovements";
@@ -27,13 +27,14 @@ import IngredientsPanel from "./IngredientsPanel";
 import RecipeEditor from "./RecipeEditor";
 import FinanceiroPanel from "./FinanceiroPanel";
 import StockMovementsLog from "./StockMovementsLog";
+import ShoppingList from "./ShoppingList";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "cardapio" | "combos" | "fotos" | "financeiro";
+type AdminTab = "visao" | "cardapio" | "combos" | "fotos" | "estoque" | "financeiro";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
@@ -41,6 +42,7 @@ const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
   { id: "fotos", label: "Fotos" },
+  { id: "estoque", label: "Estoque" },
   { id: "financeiro", label: "Financeiro" },
 ];
 
@@ -165,6 +167,8 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeRecipes(setRecipes), []);
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
   useEffect(() => subscribeFixedExpenses(setFixedExpenses), []);
+  const [fixedExpenseHistory, setFixedExpenseHistory] = useState<FixedExpenseHistoryEntry[]>([]);
+  useEffect(() => subscribeFixedExpenseHistory(setFixedExpenseHistory), []);
   const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
   useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
@@ -803,6 +807,13 @@ function Dashboard({ user }: { user: User }) {
           )}
         </div>}
 
+        {activeTab === "estoque" && (
+          <div className="space-y-8">
+            <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onSetMinStock={setMinStock} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
+            <ShoppingList ingredients={ingredients} />
+          </div>
+        )}
+
         {activeTab === "financeiro" && (
           <>
           <FinanceiroPanel
@@ -813,6 +824,7 @@ function Dashboard({ user }: { user: User }) {
             ingredients={ingredients}
             recipes={recipes}
             fixedExpenses={fixedExpenses}
+            fixedExpenseHistory={fixedExpenseHistory}
             paymentFeeRates={paymentFeeRates}
             itemCatalog={itemCatalog}
             onAddFixedExpense={addFixedExpense}
@@ -925,8 +937,6 @@ function Dashboard({ user }: { user: User }) {
             })}
           </div>
         </div>
-
-        <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
 
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>

@@ -119,6 +119,11 @@ service cloud.firestore {
     match /fixedExpenses/{expenseId} {
       allow read, write: if request.auth != null;
     }
+    // Histórico de valores de cada despesa fixa (pra comparar mês a mês) —
+    // só o admin autenticado lê e escreve.
+    match /fixedExpenseHistory/{entryId} {
+      allow read, write: if request.auth != null;
+    }
 
     // Extrato de movimentação de estoque (baixa/devolução por pedido) — só o
     // admin autenticado lê e escreve, o site público nunca acessa isso.

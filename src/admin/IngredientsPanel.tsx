@@ -29,7 +29,7 @@ function PurchaseHistoryRow({ purchase, unit, onEdit, onDelete }: { purchase: In
   );
 }
 
-export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
+export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<IngredientUnit>("kg");
   const [addingIngredient, setAddingIngredient] = useState(false);
@@ -37,6 +37,8 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
   const [savingPurchaseId, setSavingPurchaseId] = useState<string | null>(null);
   const [adjustDrafts, setAdjustDrafts] = useState<Record<string, string>>({});
   const [savingAdjustId, setSavingAdjustId] = useState<string | null>(null);
+  const [minStockDrafts, setMinStockDrafts] = useState<Record<string, string>>({});
+  const [savingMinStockId, setSavingMinStockId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const handleAddIngredient = () => {
@@ -71,11 +73,21 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
     onAdjustStock(ingredient.id, newStock).then(() => setAdjustDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; })).finally(() => setSavingAdjustId(null));
   };
 
+  const handleSaveMinStock = (ingredient: Ingredient) => {
+    const draft = minStockDrafts[ingredient.id];
+    if (draft === undefined) return;
+    const trimmed = draft.trim();
+    const minStock = trimmed === "" ? null : Number(trimmed.replace(",", "."));
+    if (minStock !== null && (Number.isNaN(minStock) || minStock < 0)) return;
+    setSavingMinStockId(ingredient.id);
+    onSetMinStock(ingredient.id, minStock).then(() => setMinStockDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; })).finally(() => setSavingMinStockId(null));
+  };
+
   return (
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
       <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Compras e custo</h2>
-      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal (ex.: se veio uma caixa com 50 unidades, lança 50 — não 1 pelo preço da caixa inteira). Errou alguma compra? Edita ou apaga ela no histórico — o custo médio se ajusta sozinho. Precisa corrigir só a quantidade em estoque (perda, quebra)? Usa o ajuste manual, sem mexer no custo.</p>
+      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal (ex.: se veio uma caixa com 50 unidades, lança 50 — não 1 pelo preço da caixa inteira). Errou alguma compra? Edita ou apaga ela no histórico — o custo médio se ajusta sozinho. Precisa corrigir só a quantidade em estoque (perda, quebra)? Usa o ajuste manual, sem mexer no custo. Define um "estoque mínimo" pra aparecer na lista de compras logo abaixo quando acabar.</p>
 
       <div className="mt-5 flex flex-wrap items-end gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
         <div className="min-w-0 flex-1">
@@ -100,7 +112,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="text-sm font-bold text-white">{ingredient.name}</span>
-                  <span className="ml-2 text-xs text-white/50">{ingredient.stock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]} em estoque · custo médio R${ingredient.avgCost.toFixed(2)}/{UNIT_LABELS[ingredient.unit]}</span>
+                  <span className="ml-2 text-xs text-white/50">{ingredient.stock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]} em estoque · custo médio R${ingredient.avgCost.toFixed(2)}/{UNIT_LABELS[ingredient.unit]}{ingredient.minStock !== null && <> · mínimo {ingredient.minStock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]}</>}</span>
                 </div>
                 {history.length > 0 && <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>}
               </div>
@@ -120,6 +132,13 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
                     <input type="text" inputMode="decimal" value={adjustDraft ?? ""} onChange={(event) => setAdjustDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={String(ingredient.stock)} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
                   </div>
                   <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Estoque mínimo</label>
+                    <input type="text" inputMode="decimal" value={minStockDrafts[ingredient.id] ?? ""} onChange={(event) => setMinStockDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={ingredient.minStock !== null ? String(ingredient.minStock) : "sem mínimo"} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                  </div>
+                  <button type="button" onClick={() => handleSaveMinStock(ingredient)} disabled={savingMinStockId === ingredient.id || minStockDrafts[ingredient.id] === undefined} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingMinStockId === ingredient.id ? "…" : "Definir"}</button>
                 </div>
               </div>
               {expandedHistoryId === ingredient.id && (
