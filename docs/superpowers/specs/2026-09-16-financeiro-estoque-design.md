@@ -1,7 +1,8 @@
 # Financeiro + Estoque de ingredientes — design
 
 Data: 2026-09-16
-Status: aprovado pelo cliente (Leonardo), aguardando plano de implementação
+Status: aprovado pelo cliente (Leonardo); revisado uma segunda vez após
+review técnico externo — achados incorporados abaixo (marcados **[revisão]**).
 
 ## Contexto e objetivo
 
@@ -24,6 +25,12 @@ não amarrado a nenhum prato específico do Sooba.
   médio atual.
 - Ajuste manual de estoque (corrigir quantidade sem mexer no custo — ex:
   perda, quebra, gastou mais que o previsto).
+- **[revisão]** Editar ou apagar uma compra registrada por engano (ex.: dígito
+  a mais no valor) — o custo médio é recalculado do zero a partir do
+  histórico de compras que sobrou, nunca fica "preso" num valor errado.
+- **[revisão]** Taxa de pagamento configurável por forma de pagamento (Pix/
+  Cartão/Dinheiro) — desconta do lucro líquido igual custo de ingrediente,
+  já que o pedido já grava qual foi a forma de pagamento.
 - Ficha técnica por prato (quais ingredientes + quanto de cada um) — visível
   só no admin, dentro da aba "Cardápio", nunca no site público.
 - Baixa automática de estoque quando um pedido novo chega, com o custo do
@@ -48,6 +55,15 @@ não amarrado a nenhum prato específico do Sooba.
 - Rateio proporcional de gasto fixo pra visões de dia/semana.
 - Multi-loja / múltiplos usuários com permissões diferentes.
 - Custeio FIFO/por lote — usamos custo médio ponderado simples.
+- **[revisão]** Fator de rendimento/perda por ingrediente (ex.: 1kg de
+  cebola crua rende só 850g limpa). Pro MVP, a ficha técnica é preenchida
+  já com a quantidade **bruta** consumida (a UI deixa isso explícito) —
+  resolve sem precisar de campo novo, só pede um pouco mais de conta na
+  hora de cadastrar. Campo de rendimento automático fica pra depois.
+- **[revisão]** Unidade de compra diferente da unidade de estoque (comprar
+  "1 caixa com 50 unidades" e o sistema converter sozinho) — pro MVP, o
+  aviso de preço fora do padrão (ver abaixo) já pega a maior parte desse
+  erro depois da primeira compra; a UI só reforça com um texto de ajuda.
 
 ## Modelo de dados (Firestore)
 
@@ -62,7 +78,7 @@ ingredients/{ingredientId}
   stock: number
   avgCost: number       // custo médio ponderado por unidade
 
-ingredientPurchases/{purchaseId}   // histórico/auditoria, não editável depois de criado
+ingredientPurchases/{purchaseId}   // [revisão] editável/apagável — ver "Corrigir uma compra"
   ingredientId: string
   quantity: number
   totalCost: number
@@ -71,22 +87,26 @@ ingredientPurchases/{purchaseId}   // histórico/auditoria, não editável depoi
 menuStatus/recipes
   recipes: { [itemId]: { ingredientId: string; quantity: number }[] }
 
+menuStatus/paymentFees   // [revisão] taxa % por forma de pagamento
+  rates: { pix: number; cartao: number; dinheiro: number } // ex.: cartao: 0.035 = 3,5%
+
 fixedExpenses/{expenseId}
   name: string
   amount: number
 
 orders/{orderId}   // campos NOVOS no doc que já existe
   stockDeducted: boolean
-  ingredientCost: number          // custo total gravado no momento da baixa
-  missingRecipeItemIds?: string[] // itens do pedido sem ficha técnica (custo não contabilizado)
+  ingredientCost: number             // custo total gravado no momento da baixa
+  missingRecipeItemIds: string[]     // itens do pedido sem ficha técnica nenhuma
+  incompleteCostItemIds: string[]    // [revisão] itens COM ficha técnica, mas que usam ingrediente sem custo real (nunca comprado, ou apagado) — custo desses itens contou como 0 nessa baixa
   deductedIngredients: { ingredientId: string; quantity: number }[] // exatamente o que foi descontado, pra devolver certinho se o pedido for apagado
 ```
 
 Regra do Firestore: mesmo padrão de `menuStatus/{document}` já existente
 (`allow read: if true; allow write: if request.auth != null;`) cobre
-`ingredients`, `menuStatus/recipes` e `fixedExpenses`.
-`ingredientPurchases` só precisa de escrita autenticada (nunca lido pelo
-site público).
+`ingredients`, `menuStatus/recipes`, `menuStatus/paymentFees` e
+`fixedExpenses`. `ingredientPurchases` só precisa de escrita autenticada
+(nunca lido pelo site público).
 
 ## Fluxos principais
 
@@ -94,10 +114,28 @@ site público).
 Admin escolhe o ingrediente, digita quantidade + valor pago. Se
 `novoCustoUnitario` estiver fora de uma faixa razoável do `avgCost` atual
 (ex.: mais de 3x maior ou menor que o atual, só quando já existe estoque/
-custo anterior pra comparar), mostra confirmação antes de salvar. Ao
-confirmar: grava em `ingredientPurchases`, atualiza `ingredients/{id}` com
-`stock += quantity` e novo `avgCost` pela média ponderada:
+custo anterior pra comparar), mostra confirmação antes de salvar — texto de
+ajuda no formulário reforça "lança na mesma unidade da nota fiscal" (mitiga
+o caso de comprar 1 caixa com 50 unidades e lançar como "1 unidade" pelo
+preço da caixa inteira). Ao confirmar: grava em `ingredientPurchases`,
+atualiza `ingredients/{id}` com `stock += quantity` e novo `avgCost` pela
+média ponderada:
 `novoAvgCost = (stockAtual * avgCostAtual + quantity * unitCost) / (stockAtual + quantity)`.
+
+### Corrigir uma compra **[revisão]**
+Editar ou apagar uma compra (`ingredientPurchases/{id}`) **recalcula o
+`avgCost` do zero**, somando `totalCost`/`quantity` de TODAS as compras que
+sobraram daquele ingrediente (nunca faz conta incremental em cima do valor
+errado) — assim um erro de digitação não fica preso pra sempre no custo
+médio. Ao mesmo tempo, ajusta `stock` pela diferença entre a quantidade
+antiga e a nova (ou subtrai tudo, se apagou). Se isso deixar `stock`
+negativo, deixa — é um sinal útil de "venderam mais do que compraram
+registrado", não um erro pra bloquear.
+Limitação aceita: o recálculo do `avgCost` lê o histórico de compras fora
+de uma transação (Firestore não permite consulta por filtro dentro de
+transação) — só a escrita final (estoque + custo) é transacional. Numa
+loja pequena com uma pessoa mexendo no painel por vez, o risco de duas
+edições de compra colidirem ao mesmo tempo é desprezível.
 
 ### Baixa automática de estoque (no pedido novo)
 Reaproveita o `onSnapshot` de pedidos já existente no admin (mesmo lugar que
@@ -105,18 +143,40 @@ hoje dispara o som e a impressão automática). Pra cada pedido novo ainda sem
 `stockDeducted`, roda uma transação Firestore:
 1. Relê o doc do pedido — se `stockDeducted` já for `true` (outra aba já
    processou), aborta sem fazer nada.
-2. Pra cada item do pedido, busca a receita em `menuStatus/recipes`. Item
-   sem receita entra em `missingRecipeItemIds`, custo dele conta como 0.
-3. Soma o consumo total por ingrediente (multiplicando pela quantidade do
+2. **[revisão]** Lê `menuStatus/recipes` **direto do Firestore, dentro da
+   própria transação** — não recebe a receita como parâmetro vindo do
+   estado do React. Isso é de propósito: se recebesse do React, existiria
+   uma corrida real entre "o pedido chegou" e "a assinatura de receitas
+   ainda não tinha carregado no navegador" — e como o custo do pedido nunca
+   é recalculado depois, um erro assim ficaria permanente. Lendo direto do
+   banco (igual já faz com os ingredientes), esse risco não existe.
+3. Pra cada item do pedido, busca a receita. Item **sem receita nenhuma**
+   entra em `missingRecipeItemIds`. Item **com receita, mas que usa algum
+   ingrediente sem custo real** (nunca comprado — `avgCost` ainda no
+   default — ou apagado) entra em `incompleteCostItemIds`; a contribuição
+   desse ingrediente conta como 0 no custo, mas fica **sinalizada**, nunca
+   escondida.
+4. Soma o consumo total por ingrediente (multiplicando pela quantidade do
    item no pedido).
-4. Lê cada `ingredients/{id}` envolvido, decrementa `stock`, soma
+5. Lê cada `ingredients/{id}` envolvido, decrementa `stock`, soma
    `quantidadeUsada * avgCost` no custo total do pedido.
-5. Grava tudo isso na mesma transação: novo `stock` de cada ingrediente +
-   `stockDeducted: true`, `ingredientCost`, `missingRecipeItemIds` no pedido.
+6. Grava tudo isso na mesma transação: novo `stock` de cada ingrediente +
+   `stockDeducted: true`, `ingredientCost`, `missingRecipeItemIds`,
+   `incompleteCostItemIds` no pedido.
 
 Isso garante baixa única mesmo com o painel aberto em mais de um
 computador ao mesmo tempo (a transação serializa: a segunda tentativa lê
 `stockDeducted: true` e não faz nada).
+
+### Recuperação de baixa que falhou **[revisão]**
+Se a transação falhar (rede caiu, etc.), o pedido fica sem `stockDeducted`
+e, sem nenhum tratamento, nunca mais tentaria de novo. Ao abrir o painel, além
+de escutar pedido novo, roda uma varredura **única** (silenciosa, sem
+banner de erro) nos pedidos já carregados que ainda não tiverem
+`stockDeducted`, tentando descontar de novo — exceto o pedido que estiver
+sendo apagado naquele exato momento (evita brigar com a devolução de
+estoque descrita abaixo). Como a transação é idempotente (passo 1 acima),
+tentar de novo nunca duplica nada.
 
 ### Apagar pedido
 Se o pedido apagado tinha `stockDeducted: true`, antes de apagar o doc, uma
@@ -136,9 +196,11 @@ então funciona igual pra item base, item custom e combo do dia.
 
 ### Aba "Financeiro"
 - Cards Hoje/Semana: Bruto, Custo variável (soma de `order.ingredientCost`
-  dos pedidos do período), Margem = Bruto − Custo variável.
+  dos pedidos do período), **[revisão]** Taxa de pagamento (soma de
+  `order.total * rates[order.paymentMethod]`), Margem = Bruto − Custo
+  variável − Taxa de pagamento.
 - Card Mês: os mesmos + Gastos fixos (soma de `fixedExpenses`) + **Lucro
-  líquido real** = Bruto − Custo variável − Gastos fixos.
+  líquido real** = Bruto − Custo variável − Taxa de pagamento − Gastos fixos.
 - Card Mês mostra também, como número auxiliar separado, o **Total
   comprado no mês** (soma de `ingredientPurchases` do período) — essa é a
   visão "Nível 1" que funciona mesmo sem nenhuma ficha técnica cadastrada
@@ -147,11 +209,20 @@ então funciona igual pra item base, item custom e combo do dia.
   distinto do Custo variável "de verdade" (que vem das vendas).
 - Se algum pedido do período tiver `missingRecipeItemIds` não vazio, mostra
   aviso "N pedidos com prato sem ficha técnica — custo pode estar
-  subestimado".
+  subestimado". **[revisão]** Mesma lógica pra `incompleteCostItemIds`
+  (ficha técnica existe, mas algum ingrediente dela não tem custo real
+  cadastrado) — aviso separado, mesmo motivo.
 - Ranking de pratos: pra cada item com ficha técnica, margem atual = preço
   de venda − custo atual (soma da receita × `avgCost` de cada ingrediente
-  hoje). Ordena do mais lucrativo pro menos. Itens sem ficha técnica
-  aparecem separados, marcados "sem ficha técnica".
+  hoje). Ordena do mais lucrativo pro menos. **[revisão]** O cálculo do
+  custo atual devolve `{ cost, complete }`, nunca só um número — item com
+  algum ingrediente sem custo real (nunca comprado, ou apagado) tem
+  `complete: false` e aparece marcado como "custo incompleto" em vez de
+  entrar no ranking como se fosse um número confiável. Itens sem ficha
+  técnica nenhuma continuam aparecendo separados, marcados "sem ficha
+  técnica".
+- **[revisão]** Taxa de pagamento (Pix/Cartão/Dinheiro) é configurável numa
+  telinha simples dentro do Financeiro — 3 campos de porcentagem.
 
 ## Casos de borda já decididos
 
@@ -165,6 +236,26 @@ então funciona igual pra item base, item custom e combo do dia.
 - **Gasto fixo só entra na visão mensal** — dividir aluguel por dia/semana
   seria impreciso e foi descartado por ora.
 - **Yaki com múltiplas unidades/addons** (`makeInstanceId`/`ADDON_SEPARATOR`
-  já existentes): a receita é sempre por id-base do prato, então a baixa de
-  estoque funciona igual sem precisar de nenhum tratamento especial pra
-  instância/addon.
+  já existentes): cada adicional (ex.: "Extra de Carne") já chega como uma
+  linha **própria e independente** dentro de `order.items` (com seu próprio
+  id, resolvido pelo `resolveRecipeItemId`), então o cálculo de consumo
+  passa por cada linha separadamente — soma a receita do prato base **e**
+  a receita do adicional, cada um com sua própria ficha técnica cadastrada
+  no admin. Não precisa de nenhum tratamento especial: testado explicitamente
+  no Task 4 do plano de implementação.
+- **[revisão] Custo R$0 mascarado**: `avgCost` de um ingrediente nunca
+  comprado (ou apagado depois de estar numa ficha técnica) é 0 por padrão —
+  isso NUNCA pode ser confundido com "esse ingrediente realmente não
+  custa nada". Todo cálculo de custo (baixa de estoque e ranking de
+  margem) carrega junto um sinal de "completo/incompleto", nunca só o
+  número.
+- **[revisão] Corrigir compra registrada errada**: editar/apagar uma compra
+  recalcula `avgCost` do zero a partir do histórico que sobrou (nunca em
+  cima do valor errado) — ver "Corrigir uma compra" acima.
+- **[revisão] Taxa de pagamento**: cartão/maquininha come uma % do
+  faturamento que não é custo de ingrediente nem despesa fixa — entra como
+  linha própria no cálculo de lucro líquido, configurável por forma de
+  pagamento.
+- **[revisão] Fator de rendimento**: fica fora do MVP por decisão explícita
+  (ver "Fica de fora por agora") — ficha técnica é preenchida com
+  quantidade bruta, não líquida.
