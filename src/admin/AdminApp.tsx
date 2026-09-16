@@ -24,6 +24,8 @@ const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
 type AdminTab = "visao" | "cardapio" | "combos" | "fotos";
+const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
+
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
   { id: "cardapio", label: "Cardápio" },
@@ -666,6 +668,9 @@ function Dashboard({ user }: { user: User }) {
                             </div>
                           </div>
                           {(order.customerName || order.customerPhone) && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>👤 {order.customerName}{order.customerName && order.customerPhone ? " · " : ""}{order.customerPhone}</p>}
+                          {order.deliveryType === "entrega" && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>🛵 Entrega{order.location.trim() ? `: ${order.location.trim()}` : ""}</p>}
+                          {order.deliveryType === "retirada" && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>🏪 Retirada no local</p>}
+                          {order.paymentMethod && <p className={`mt-1 font-semibold text-white/60 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>💳 Pagamento: {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}</p>}
                           {order.notes.trim() && <p className={`mt-1 font-bold text-[#ff875c] ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>📝 Observação: {order.notes.trim()}</p>}
                           <div className="mt-2 space-y-1">
                             {order.items.map((item) => (

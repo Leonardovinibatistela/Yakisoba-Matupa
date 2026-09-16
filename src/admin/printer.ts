@@ -113,6 +113,8 @@ function row(left: string, right: string): number[] {
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartao", dinheiro: "Dinheiro" };
+
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora. */
 export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   const bytes: number[] = [];
@@ -129,6 +131,14 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
     if (order.customerPhone) bytes.push(...textBytes(`Whats: ${order.customerPhone}`), 0x0a);
     bytes.push(...divider());
   }
+  if (order.deliveryType === "entrega") {
+    bytes.push(...CMD_BOLD_ON, ...textBytes("ENTREGA"), 0x0a, ...CMD_BOLD_OFF);
+    if (order.location.trim()) bytes.push(...textBytes(order.location.trim()), 0x0a);
+    bytes.push(...divider());
+  } else if (order.deliveryType === "retirada") {
+    bytes.push(...CMD_BOLD_ON, ...textBytes("RETIRADA NO LOCAL"), 0x0a, ...CMD_BOLD_OFF);
+    bytes.push(...divider());
+  }
   if (order.notes.trim()) {
     bytes.push(...CMD_BOLD_ON, ...textBytes("OBSERVACAO:"), 0x0a, ...textBytes(order.notes.trim()), 0x0a, ...CMD_BOLD_OFF);
     bytes.push(...divider());
@@ -138,6 +148,7 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   });
   bytes.push(...divider());
   bytes.push(...CMD_BOLD_ON, ...row("TOTAL", formatTotal(order.total)), ...CMD_BOLD_OFF);
+  if (order.paymentMethod) bytes.push(...row("Pagamento:", PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod));
   bytes.push(0x0a, 0x0a, 0x0a);
   bytes.push(...CMD_CUT);
   return new Uint8Array(bytes);
