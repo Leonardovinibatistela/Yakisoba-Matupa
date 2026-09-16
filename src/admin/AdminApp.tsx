@@ -119,6 +119,17 @@ function Dashboard({ user }: { user: User }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("visao");
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
+  // Se os pedidos demorarem demais pra carregar (conexão ruim, instabilidade
+  // do Firebase), avisa em vez de deixar a tela girando pra sempre sem
+  // explicação — só afeta quem está nas abas que realmente precisam de
+  // pedido (Visão, Financeiro); as outras abas (Estoque, Cardápio, Combos,
+  // Fotos) funcionam mesmo enquanto isso.
+  const [ordersTimedOut, setOrdersTimedOut] = useState(false);
+  useEffect(() => {
+    if (orders !== null) { setOrdersTimedOut(false); return; }
+    const timer = setTimeout(() => setOrdersTimedOut(true), 15000);
+    return () => clearTimeout(timer);
+  }, [orders]);
   // Aviso fixo (não some sozinho) pra erro ao salvar preço/nome/foto — um
   // alert() pode passar despercebido (some rápido, ou o navegador bloqueia),
   // então isso fica na tela até a pessoa fechar, com o erro real do Firebase.
@@ -543,12 +554,11 @@ function Dashboard({ user }: { user: User }) {
   }, [pickedDate, orders]);
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
-  if (!orders) return <div className="grid min-h-screen place-items-center bg-[#100d0c] text-white/60">Carregando pedidos…</div>;
 
   const now = new Date();
-  const todayOrders = ordersInRange(orders, startOfDay(now));
-  const weekOrders = ordersInRange(orders, startOfWeek(now));
-  const monthOrders = ordersInRange(orders, startOfMonth(now));
+  const todayOrders = orders ? ordersInRange(orders, startOfDay(now)) : [];
+  const weekOrders = orders ? ordersInRange(orders, startOfWeek(now)) : [];
+  const monthOrders = orders ? ordersInRange(orders, startOfMonth(now)) : [];
   const itemCatalog = [
     ...menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price })),
     ...addonSections.flatMap((section) => section.items).map((item) => ({ id: item.id, name: item.name, price: item.price })),
@@ -594,6 +604,20 @@ function Dashboard({ user }: { user: User }) {
     removeCarouselImage(id).then(loadCarouselImages).catch(() => setCarouselError("Não foi possível remover essa foto."));
   };
 
+  const ordersLoadingNotice = (
+    <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6 text-center">
+      {ordersTimedOut ? (
+        <>
+          <p className="text-sm font-bold text-amber-300">Isso está demorando mais que o normal pra carregar os pedidos.</p>
+          <p className="mt-1.5 text-sm text-white/50">Pode ser a conexão. Tenta recarregar a página.</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e]">Recarregar</button>
+        </>
+      ) : (
+        <p className="text-sm text-white/60">Carregando pedidos…</p>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#100d0c] px-5 py-8 text-white sm:px-8">
       {saveError && <div className="sticky top-3 z-50 mx-auto mb-5 max-w-5xl rounded-2xl border border-red-400/40 bg-[#2a1210] p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-line text-sm font-bold text-red-300">⚠️ {saveError}</p><button type="button" onClick={() => setSaveError(null)} className="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs font-bold text-white/70 hover:border-white/35 hover:text-white">Fechar</button></div></div>}
@@ -622,7 +646,7 @@ function Dashboard({ user }: { user: User }) {
           ))}
         </div>
 
-        {activeTab === "visao" && <>
+        {activeTab === "visao" && (orders ? <>
         <PeriodSection title="Hoje" orders={todayOrders} />
         <PeriodSection title="Essa semana" orders={weekOrders} />
         <PeriodSection title="Esse mês" orders={monthOrders} monthLabel={now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })} />
@@ -779,7 +803,7 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </div>
 
-        </>}
+        </> : ordersLoadingNotice)}
 
         {activeTab === "fotos" && <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Carrossel do site</p>
@@ -814,7 +838,7 @@ function Dashboard({ user }: { user: User }) {
           </div>
         )}
 
-        {activeTab === "financeiro" && (
+        {activeTab === "financeiro" && (orders ? (
           <>
           <FinanceiroPanel
             todayOrders={todayOrders}
@@ -834,7 +858,7 @@ function Dashboard({ user }: { user: User }) {
           />
           <StockMovementsLog movements={stockMovements} />
           </>
-        )}
+        ) : ordersLoadingNotice)}
 
         {activeTab === "cardapio" && <>
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
