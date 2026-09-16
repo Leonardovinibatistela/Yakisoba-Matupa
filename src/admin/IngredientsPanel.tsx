@@ -89,6 +89,18 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Compras e custo</h2>
       <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal (ex.: se veio uma caixa com 50 unidades, lança 50 — não 1 pelo preço da caixa inteira). Errou alguma compra? Edita ou apaga ela no histórico — o custo médio se ajusta sozinho. Precisa corrigir só a quantidade em estoque (perda, quebra)? Usa o ajuste manual, sem mexer no custo. Define um "estoque mínimo" pra aparecer na lista de compras logo abaixo quando acabar.</p>
 
+      {(() => {
+        const outOfStockCount = ingredients.filter((ingredient) => ingredient.stock <= 0).length;
+        const lowStockCount = ingredients.filter((ingredient) => ingredient.stock > 0 && ingredient.minStock !== null && ingredient.stock < ingredient.minStock).length;
+        if (outOfStockCount === 0 && lowStockCount === 0) return null;
+        return (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {outOfStockCount > 0 && <span className="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-bold text-red-400">🔴 {outOfStockCount} ingrediente{outOfStockCount === 1 ? "" : "s"} esgotado{outOfStockCount === 1 ? "" : "s"}</span>}
+            {lowStockCount > 0 && <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-xs font-bold text-amber-300">🟡 {lowStockCount} esgotando</span>}
+          </div>
+        );
+      })()}
+
       <div className="mt-5 flex flex-wrap items-end gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
         <div className="min-w-0 flex-1">
           <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Novo ingrediente</label>
@@ -112,6 +124,11 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="text-sm font-bold text-white">{ingredient.name}</span>
+                  {ingredient.stock <= 0 ? (
+                    <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">🔴 Esgotado</span>
+                  ) : ingredient.minStock !== null && ingredient.stock < ingredient.minStock ? (
+                    <span className="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">🟡 Esgotando</span>
+                  ) : null}
                   <span className="ml-2 text-xs text-white/50">{ingredient.stock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]} em estoque · custo médio R${ingredient.avgCost.toFixed(2)}/{UNIT_LABELS[ingredient.unit]}{ingredient.minStock !== null && <> · mínimo {ingredient.minStock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]}</>}</span>
                 </div>
                 {history.length > 0 && <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>}
