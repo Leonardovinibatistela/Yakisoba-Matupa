@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDocs, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 export type IngredientUnit = "kg" | "l" | "un";
@@ -65,13 +65,18 @@ export async function setMinStock(ingredientId: string, minStock: number | null)
 const ingredientPurchasesCollection = collection(db, "ingredientPurchases");
 
 /**
- * Todas as compras já registradas, mais recente primeiro. Usado no
- * Financeiro pra mostrar "quanto foi comprado esse mês" mesmo antes de
- * qualquer ficha técnica existir (visão aproximada, ver spec).
+ * As 500 compras mais recentes (de qualquer ingrediente), mais nova
+ * primeiro — cobre bem mais que um mês de uso pra qualquer ficha técnica ou
+ * pro cálculo de "quanto foi comprado esse mês" no Financeiro. Sem esse
+ * limite, essa lista cresce pra sempre (toda compra já registrada desde o
+ * início) e o painel fica puxando cada vez mais dado toda vez que abre —
+ * corrigir uma compra antiga continua funcionando igual, porque
+ * savePurchaseEdit busca o histórico completo daquele ingrediente direto do
+ * Firestore, sem depender dessa lista.
  */
 export function subscribeIngredientPurchases(onUpdate: (purchases: IngredientPurchase[]) => void, onError?: (error: unknown) => void): () => void {
   return onSnapshot(
-    query(ingredientPurchasesCollection, orderBy("createdAt", "desc")),
+    query(ingredientPurchasesCollection, orderBy("createdAt", "desc"), limit(500)),
     (snapshot) => onUpdate(snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
       const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
