@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { isPurchasePriceUnusual, type Ingredient, type IngredientPurchase, type IngredientUnit } from "./ingredients";
 
 const UNIT_LABELS: Record<IngredientUnit, string> = { kg: "kg", l: "litros", un: "unidades" };
+
+function statusLabel(ingredient: Ingredient): { label: string; className: string } | null {
+  if (ingredient.stock <= 0) return { label: "🔴 Esgotado", className: "bg-red-500/15 text-red-400" };
+  if (ingredient.minStock !== null && ingredient.stock < ingredient.minStock) return { label: "🟡 Esgotando", className: "bg-amber-400/15 text-amber-300" };
+  return null;
+}
 
 function PurchaseHistoryRow({ purchase, unit, onEdit, onDelete }: { purchase: IngredientPurchase; unit: IngredientUnit; onEdit: (newQuantity: number, newTotalCost: number) => Promise<void>; onDelete: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
@@ -29,9 +35,40 @@ function PurchaseHistoryRow({ purchase, unit, onEdit, onDelete }: { purchase: In
   );
 }
 
-export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
+const exportToExcel = (items: Ingredient[]) => {
+  const header = ["Nome", "Categoria", "Unidade", "Estoque", "Custo medio", "Minimo", "Status"];
+  const rows = items.map((item) => {
+    const status = statusLabel(item);
+    return [item.name, item.category ?? "", UNIT_LABELS[item.unit], item.stock.toLocaleString("pt-BR"), item.avgCost.toFixed(2).replace(".", ","), item.minStock !== null ? item.minStock.toLocaleString("pt-BR") : "", status ? status.label.replace(/[^\w\s]/g, "").trim() : "OK"];
+  });
+  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `estoque-sooba-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const printTable = (items: Ingredient[]) => {
+  const rows = items.map((item) => {
+    const status = statusLabel(item);
+    return `<tr><td>${item.name}</td><td>${item.category ?? "-"}</td><td>${UNIT_LABELS[item.unit]}</td><td>${item.stock.toLocaleString("pt-BR")}</td><td>R$${item.avgCost.toFixed(2)}</td><td>${item.minStock !== null ? item.minStock.toLocaleString("pt-BR") : "-"}</td><td>${status ? status.label.replace(/[^\w\s]/g, "").trim() : "OK"}</td></tr>`;
+  }).join("");
+  const html = `<!doctype html><html><head><title>Estoque Sooba</title><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px} table{width:100%;border-collapse:collapse} th,td{border:1px solid #ccc;padding:6px 10px;text-align:left;font-size:13px} th{background:#f0f0f0}</style></head><body><h2>Estoque — Sooba (${new Date().toLocaleDateString("pt-BR")})</h2><table><thead><tr><th>Nome</th><th>Categoria</th><th>Unidade</th><th>Estoque</th><th>Custo médio</th><th>Mínimo</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return;
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+};
+
+export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onSetCategory, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit, category: string | null) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onSetCategory: (ingredientId: string, category: string | null) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<IngredientUnit>("kg");
+  const [newCategory, setNewCategory] = useState("");
   const [addingIngredient, setAddingIngredient] = useState(false);
   const [purchaseDrafts, setPurchaseDrafts] = useState<Record<string, { quantity: string; totalCost: string }>>({});
   const [savingPurchaseId, setSavingPurchaseId] = useState<string | null>(null);
@@ -39,17 +76,31 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
   const [savingAdjustId, setSavingAdjustId] = useState<string | null>(null);
   const [minStockDrafts, setMinStockDrafts] = useState<Record<string, string>>({});
   const [savingMinStockId, setSavingMinStockId] = useState<string | null>(null);
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
+  const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
+  const [expandedIngredientId, setExpandedIngredientId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showFlash = (message: string) => {
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    setFlashMessage(message);
+    flashTimeoutRef.current = setTimeout(() => setFlashMessage(null), 2000);
+  };
 
   const normalize = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const filteredIngredients = searchQuery.trim() === "" ? ingredients : ingredients.filter((ingredient) => normalize(ingredient.name).includes(normalize(searchQuery.trim())));
+  const filteredIngredients = searchQuery.trim() === "" ? ingredients : ingredients.filter((ingredient) => {
+    const query = normalize(searchQuery.trim());
+    return normalize(ingredient.name).includes(query) || (ingredient.category !== null && normalize(ingredient.category).includes(query));
+  });
 
   const handleAddIngredient = () => {
     const name = newName.trim();
     if (!name) return;
     setAddingIngredient(true);
-    onAddIngredient(name, newUnit).then(() => { setNewName(""); setNewUnit("kg"); }).finally(() => setAddingIngredient(false));
+    onAddIngredient(name, newUnit, newCategory.trim() || null).then(() => { setNewName(""); setNewUnit("kg"); setNewCategory(""); showFlash("Ingrediente adicionado"); }).finally(() => setAddingIngredient(false));
   };
 
   const handleSavePurchase = (ingredient: Ingredient) => {
@@ -64,7 +115,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
     }
     setSavingPurchaseId(ingredient.id);
     onRegisterPurchase(ingredient.id, quantity, totalCost)
-      .then(() => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { quantity: "", totalCost: "" } })))
+      .then(() => { setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { quantity: "", totalCost: "" } })); showFlash("Compra registrada"); })
       .finally(() => setSavingPurchaseId(null));
   };
 
@@ -74,7 +125,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
     const newStock = Number(draft.replace(",", "."));
     if (Number.isNaN(newStock) || newStock < 0) return;
     setSavingAdjustId(ingredient.id);
-    onAdjustStock(ingredient.id, newStock).then(() => setAdjustDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; })).finally(() => setSavingAdjustId(null));
+    onAdjustStock(ingredient.id, newStock).then(() => { setAdjustDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; }); showFlash("Estoque ajustado"); }).finally(() => setSavingAdjustId(null));
   };
 
   const handleSaveMinStock = (ingredient: Ingredient) => {
@@ -84,14 +135,21 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
     const minStock = trimmed === "" ? null : Number(trimmed.replace(",", "."));
     if (minStock !== null && (Number.isNaN(minStock) || minStock < 0)) return;
     setSavingMinStockId(ingredient.id);
-    onSetMinStock(ingredient.id, minStock).then(() => setMinStockDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; })).finally(() => setSavingMinStockId(null));
+    onSetMinStock(ingredient.id, minStock).then(() => { setMinStockDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; }); showFlash("Estoque mínimo definido"); }).finally(() => setSavingMinStockId(null));
+  };
+
+  const handleSaveCategory = (ingredient: Ingredient) => {
+    const draft = categoryDrafts[ingredient.id];
+    if (draft === undefined) return;
+    setSavingCategoryId(ingredient.id);
+    onSetCategory(ingredient.id, draft.trim() || null).then(() => { setCategoryDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; }); showFlash("Categoria definida"); }).finally(() => setSavingCategoryId(null));
   };
 
   return (
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
       <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Compras e custo</h2>
-      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal (ex.: se veio uma caixa com 50 unidades, lança 50 — não 1 pelo preço da caixa inteira). Errou alguma compra? Edita ou apaga ela no histórico — o custo médio se ajusta sozinho. Precisa corrigir só a quantidade em estoque (perda, quebra)? Usa o ajuste manual, sem mexer no custo. Define um "estoque mínimo" pra aparecer na lista de compras logo abaixo quando acabar.</p>
+      <p className="mt-1.5 text-sm text-white/50">Cadastre os ingredientes que vocês compram, registre cada compra (quanto comprou + quanto pagou) e o custo médio atualiza sozinho. Lança a quantidade na mesma unidade da nota fiscal. Clica numa linha da tabela pra abrir compra, ajuste de estoque, mínimo e categoria daquele ingrediente.</p>
 
       {(() => {
         const outOfStockCount = ingredients.filter((ingredient) => ingredient.stock <= 0).length;
@@ -110,74 +168,116 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
           <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Novo ingrediente</label>
           <input type="text" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Ex: Salmão" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
         </div>
+        <div className="min-w-0 flex-1">
+          <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Categoria (opcional)</label>
+          <input type="text" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Ex: Carnes" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
+        </div>
         <select value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
           {(Object.keys(UNIT_LABELS) as IngredientUnit[]).map((unit) => <option key={unit} value={unit} className="bg-[#171211]">{UNIT_LABELS[unit]}</option>)}
         </select>
         <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "+ Adicionar"}</button>
       </div>
 
-      <div className="mt-5">
-        <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Buscar ingrediente</label>
-        <input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Digite o nome, ex: coca, salmão…" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
+      <div className="mt-5 flex flex-wrap items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Buscar ingrediente</label>
+          <input type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Digite o nome ou categoria, ex: coca, carnes…" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
+        </div>
+        <button type="button" onClick={() => exportToExcel(filteredIngredients)} disabled={filteredIngredients.length === 0} className="rounded-full border border-white/15 px-3.5 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">📊 Exportar Excel</button>
+        <button type="button" onClick={() => printTable(filteredIngredients)} disabled={filteredIngredients.length === 0} className="rounded-full border border-white/15 px-3.5 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">🖨️ Imprimir</button>
       </div>
 
-      <div className="mt-4 divide-y divide-white/10 rounded-xl border border-white/10">
+      <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
         {ingredients.length === 0 ? (
           <p className="p-4 text-sm text-white/50">Nenhum ingrediente cadastrado ainda.</p>
         ) : filteredIngredients.length === 0 ? (
           <p className="p-4 text-sm text-white/50">Nenhum ingrediente encontrado pra "{searchQuery.trim()}".</p>
-        ) : filteredIngredients.map((ingredient) => {
-          const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
-          const adjustDraft = adjustDrafts[ingredient.id];
-          const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
-          return (
-            <div key={ingredient.id} className="p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <span className="text-sm font-bold text-white">{ingredient.name}</span>
-                  {ingredient.stock <= 0 ? (
-                    <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-400">🔴 Esgotado</span>
-                  ) : ingredient.minStock !== null && ingredient.stock < ingredient.minStock ? (
-                    <span className="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">🟡 Esgotando</span>
-                  ) : null}
-                  <span className="ml-2 text-xs text-white/50">{ingredient.stock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]} em estoque · custo médio R${ingredient.avgCost.toFixed(2)}/{UNIT_LABELS[ingredient.unit]}{ingredient.minStock !== null && <> · mínimo {ingredient.minStock.toLocaleString("pt-BR")} {UNIT_LABELS[ingredient.unit]}</>}</span>
-                </div>
-                {history.length > 0 && <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>}
-              </div>
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Comprou quanto</label>
-                  <input type="text" inputMode="decimal" value={draft.quantity} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, quantity: event.target.value } }))} placeholder={UNIT_LABELS[ingredient.unit]} className="mt-1.5 w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Pagou quanto (R$)</label>
-                  <input type="text" inputMode="decimal" value={draft.totalCost} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, totalCost: event.target.value } }))} placeholder="0,00" className="mt-1.5 w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
-                </div>
-                <button type="button" onClick={() => handleSavePurchase(ingredient)} disabled={savingPurchaseId === ingredient.id} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/80 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingPurchaseId === ingredient.id ? "Salvando…" : "Registrar compra"}</button>
-                <div className="ml-auto flex items-end gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Ajustar estoque pra</label>
-                    <input type="text" inputMode="decimal" value={adjustDraft ?? ""} onChange={(event) => setAdjustDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={String(ingredient.stock)} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
-                  </div>
-                  <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingAdjustId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
-                </div>
-                <div className="flex items-end gap-2">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Estoque mínimo</label>
-                    <input type="text" inputMode="decimal" value={minStockDrafts[ingredient.id] ?? ""} onChange={(event) => setMinStockDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={ingredient.minStock !== null ? String(ingredient.minStock) : "sem mínimo"} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
-                  </div>
-                  <button type="button" onClick={() => handleSaveMinStock(ingredient)} disabled={savingMinStockId === ingredient.id || minStockDrafts[ingredient.id] === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingMinStockId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingMinStockId === ingredient.id ? "…" : "Definir"}</button>
-                </div>
-              </div>
-              {expandedHistoryId === ingredient.id && (
-                <div className="mt-3 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.02] px-3">
-                  {history.map((purchase) => <PurchaseHistoryRow key={purchase.id} purchase={purchase} unit={ingredient.unit} onEdit={(newQuantity, newTotalCost) => onEditPurchase(purchase, newQuantity, newTotalCost)} onDelete={() => onDeletePurchase(purchase)} />)}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        ) : (
+          <table className="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-[10px] font-bold uppercase tracking-wide text-white/45">
+                <th className="px-3 py-2.5">Nome</th>
+                <th className="px-3 py-2.5">Categoria</th>
+                <th className="px-3 py-2.5">Unidade</th>
+                <th className="px-3 py-2.5 text-right">Estoque</th>
+                <th className="px-3 py-2.5 text-right">Custo médio</th>
+                <th className="px-3 py-2.5 text-right">Mínimo</th>
+                <th className="px-3 py-2.5">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredIngredients.map((ingredient) => {
+                const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
+                const adjustDraft = adjustDrafts[ingredient.id];
+                const status = statusLabel(ingredient);
+                const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
+                const isExpanded = expandedIngredientId === ingredient.id;
+                return (
+                  <Fragment key={ingredient.id}>
+                    <tr onClick={() => setExpandedIngredientId(isExpanded ? null : ingredient.id)} className={`cursor-pointer border-b border-white/5 transition hover:bg-white/[0.04] ${isExpanded ? "bg-white/[0.04]" : ""}`}>
+                      <td className="px-3 py-2.5 font-bold text-white">{ingredient.name}</td>
+                      <td className="px-3 py-2.5 text-white/60">{ingredient.category ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-white/60">{UNIT_LABELS[ingredient.unit]}</td>
+                      <td className="px-3 py-2.5 text-right text-white/80">{ingredient.stock.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2.5 text-right text-white/60">R${ingredient.avgCost.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 text-right text-white/60">{ingredient.minStock !== null ? ingredient.minStock.toLocaleString("pt-BR") : "—"}</td>
+                      <td className="px-3 py-2.5">{status && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${status.className}`}>{status.label}</span>}</td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="border-b border-white/5 bg-white/[0.02]">
+                        <td colSpan={7} className="px-4 py-4">
+                          <div className="flex flex-wrap items-end gap-2">
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Comprou quanto</label>
+                              <input type="text" inputMode="decimal" value={draft.quantity} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, quantity: event.target.value } }))} placeholder={UNIT_LABELS[ingredient.unit]} className="mt-1.5 w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Pagou quanto (R$)</label>
+                              <input type="text" inputMode="decimal" value={draft.totalCost} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, totalCost: event.target.value } }))} placeholder="0,00" className="mt-1.5 w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                            </div>
+                            <button type="button" onClick={() => handleSavePurchase(ingredient)} disabled={savingPurchaseId === ingredient.id} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/80 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingPurchaseId === ingredient.id ? "Salvando…" : "Registrar compra"}</button>
+                            <div className="flex items-end gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Ajustar estoque pra</label>
+                                <input type="text" inputMode="decimal" value={adjustDraft ?? ""} onChange={(event) => setAdjustDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={String(ingredient.stock)} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                              </div>
+                              <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingAdjustId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Estoque mínimo</label>
+                                <input type="text" inputMode="decimal" value={minStockDrafts[ingredient.id] ?? ""} onChange={(event) => setMinStockDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={ingredient.minStock !== null ? String(ingredient.minStock) : "sem mínimo"} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                              </div>
+                              <button type="button" onClick={() => handleSaveMinStock(ingredient)} disabled={savingMinStockId === ingredient.id || minStockDrafts[ingredient.id] === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingMinStockId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingMinStockId === ingredient.id ? "…" : "Definir"}</button>
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Categoria</label>
+                                <input type="text" value={categoryDrafts[ingredient.id] ?? ""} onChange={(event) => setCategoryDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={ingredient.category ?? "sem categoria"} className="mt-1.5 w-32 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
+                              </div>
+                              <button type="button" onClick={() => handleSaveCategory(ingredient)} disabled={savingCategoryId === ingredient.id || categoryDrafts[ingredient.id] === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingCategoryId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingCategoryId === ingredient.id ? "…" : "Salvar"}</button>
+                            </div>
+                            {history.length > 0 && (
+                              <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>
+                            )}
+                          </div>
+                          {expandedHistoryId === ingredient.id && (
+                            <div className="mt-3 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.02] px-3">
+                              {history.map((purchase) => <PurchaseHistoryRow key={purchase.id} purchase={purchase} unit={ingredient.unit} onEdit={(newQuantity, newTotalCost) => onEditPurchase(purchase, newQuantity, newTotalCost)} onDelete={() => onDeletePurchase(purchase)} />)}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
+
+      {flashMessage && <div className="fixed bottom-5 right-5 z-50 rounded-full bg-emerald-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/20">✓ {flashMessage}</div>}
     </div>
   );
 }

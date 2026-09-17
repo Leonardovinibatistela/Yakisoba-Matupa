@@ -17,7 +17,7 @@ import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
-import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
+import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, setIngredientCategory, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
 import { subscribeFixedExpenses, subscribeFixedExpenseHistory, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense, type FixedExpenseHistoryEntry } from "./fixedExpenses";
 import { subscribePaymentFeeRates, setPaymentFeeRates as persistPaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
@@ -828,7 +828,7 @@ function Dashboard({ user }: { user: User }) {
 
         {activeTab === "estoque" && (
           <div className="space-y-8">
-            <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onSetMinStock={setMinStock} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
+            <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onSetMinStock={setMinStock} onSetCategory={setIngredientCategory} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
             <ShoppingList ingredients={ingredients} />
           </div>
         )}
