@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 
 export type IngredientUnit = "kg" | "l" | "un";
@@ -39,6 +39,18 @@ export async function addIngredient(name: string, unit: IngredientUnit, category
 /** Define ou corrige a categoria de um ingrediente já cadastrado (ex: "Carnes", "Bebidas"). null remove a categoria. */
 export async function setIngredientCategory(ingredientId: string, category: string | null): Promise<void> {
   await updateDoc(doc(db, "ingredients", ingredientId), { category });
+}
+
+/**
+ * Apaga um ingrediente cadastrado errado (ex: duplicado). Não apaga o
+ * histórico de compras dele — fica guardado do mesmo jeito que o extrato de
+ * movimentação de estoque, legível mesmo depois do ingrediente sumir. Se
+ * alguma ficha técnica ainda referenciar esse ingrediente, ela passa a
+ * contar como custo incompleto (já é o comportamento existente pra
+ * ingrediente nunca comprado).
+ */
+export async function deleteIngredient(ingredientId: string): Promise<void> {
+  await deleteDoc(doc(db, "ingredients", ingredientId));
 }
 
 /** Registra uma compra: soma no estoque, recalcula o custo médio, e grava o histórico da compra. */

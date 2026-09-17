@@ -65,7 +65,7 @@ const printTable = (items: Ingredient[]) => {
   printWindow.print();
 };
 
-export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onSetCategory, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit, category: string | null) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onSetCategory: (ingredientId: string, category: string | null) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
+export default function IngredientsPanel({ ingredients, ingredientPurchases, onAddIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onSetCategory, onDeleteIngredient, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; onAddIngredient: (name: string, unit: IngredientUnit, category: string | null) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onSetCategory: (ingredientId: string, category: string | null) => Promise<void>; onDeleteIngredient: (ingredientId: string) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState<IngredientUnit>("kg");
   const [newCategory, setNewCategory] = useState("");
@@ -79,6 +79,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
   const [expandedIngredientId, setExpandedIngredientId] = useState<string | null>(null);
+  const [deletingIngredientId, setDeletingIngredientId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
@@ -145,6 +146,13 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
     onSetCategory(ingredient.id, draft.trim() || null).then(() => { setCategoryDrafts((current) => { const next = { ...current }; delete next[ingredient.id]; return next; }); showFlash("Categoria definida"); }).finally(() => setSavingCategoryId(null));
   };
 
+  const handleDeleteIngredient = (ingredient: Ingredient) => {
+    const confirmed = window.confirm(`Apagar o ingrediente "${ingredient.name}"? Isso não pode ser desfeito. O histórico de compras dele continua guardado, mas ele some da lista e de qualquer ficha técnica que o use.`);
+    if (!confirmed) return;
+    setDeletingIngredientId(ingredient.id);
+    onDeleteIngredient(ingredient.id).then(() => { setExpandedIngredientId(null); showFlash("Ingrediente apagado"); }).finally(() => setDeletingIngredientId(null));
+  };
+
   return (
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
       <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
@@ -196,6 +204,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-white/10 text-left text-[10px] font-bold uppercase tracking-wide text-white/45">
+                <th className="w-6 px-3 py-2.5"></th>
                 <th className="px-3 py-2.5">Nome</th>
                 <th className="px-3 py-2.5">Categoria</th>
                 <th className="px-3 py-2.5">Unidade</th>
@@ -214,7 +223,8 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
                 const isExpanded = expandedIngredientId === ingredient.id;
                 return (
                   <Fragment key={ingredient.id}>
-                    <tr onClick={() => setExpandedIngredientId(isExpanded ? null : ingredient.id)} className={`cursor-pointer border-b border-white/5 transition hover:bg-white/[0.04] ${isExpanded ? "bg-white/[0.04]" : ""}`}>
+                    <tr onClick={() => setExpandedIngredientId(isExpanded ? null : ingredient.id)} title="Clica pra abrir compra, ajuste de estoque, mínimo e categoria" className={`cursor-pointer border-b border-white/5 transition hover:bg-white/[0.04] ${isExpanded ? "bg-white/[0.04]" : ""}`}>
+                      <td className="px-3 py-2.5 text-white/30">{isExpanded ? "▾" : "▸"}</td>
                       <td className="px-3 py-2.5 font-bold text-white">{ingredient.name}</td>
                       <td className="px-3 py-2.5 text-white/60">{ingredient.category ?? "—"}</td>
                       <td className="px-3 py-2.5 text-white/60">{UNIT_LABELS[ingredient.unit]}</td>
@@ -225,7 +235,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
                     </tr>
                     {isExpanded && (
                       <tr className="border-b border-white/5 bg-white/[0.02]">
-                        <td colSpan={7} className="px-4 py-4">
+                        <td colSpan={8} className="px-4 py-4">
                           <div className="flex flex-wrap items-end gap-2">
                             <div>
                               <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Comprou quanto</label>
@@ -260,6 +270,7 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
                             {history.length > 0 && (
                               <button type="button" onClick={() => setExpandedHistoryId(expandedHistoryId === ingredient.id ? null : ingredient.id)} className="text-[11px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">{expandedHistoryId === ingredient.id ? "Esconder histórico" : `Histórico (${history.length})`}</button>
                             )}
+                            <button type="button" onClick={() => handleDeleteIngredient(ingredient)} disabled={deletingIngredientId === ingredient.id} className="ml-auto rounded-full border border-red-400/30 px-3.5 py-1.5 text-xs font-bold text-red-300 transition hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-wait disabled:opacity-50">{deletingIngredientId === ingredient.id ? "Apagando…" : "🗑 Apagar ingrediente"}</button>
                           </div>
                           {expandedHistoryId === ingredient.id && (
                             <div className="mt-3 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.02] px-3">
