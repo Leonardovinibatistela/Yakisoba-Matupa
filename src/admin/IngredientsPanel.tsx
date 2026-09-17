@@ -159,14 +159,14 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, onA
                     <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Ajustar estoque pra</label>
                     <input type="text" inputMode="decimal" value={adjustDraft ?? ""} onChange={(event) => setAdjustDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={String(ingredient.stock)} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
                   </div>
-                  <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
+                  <button type="button" onClick={() => handleSaveAdjust(ingredient)} disabled={savingAdjustId === ingredient.id || adjustDraft === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingAdjustId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingAdjustId === ingredient.id ? "…" : "Ajustar"}</button>
                 </div>
                 <div className="flex items-end gap-2">
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Estoque mínimo</label>
                     <input type="text" inputMode="decimal" value={minStockDrafts[ingredient.id] ?? ""} onChange={(event) => setMinStockDrafts((current) => ({ ...current, [ingredient.id]: event.target.value }))} placeholder={ingredient.minStock !== null ? String(ingredient.minStock) : "sem mínimo"} className="mt-1.5 w-24 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm text-white outline-none focus:border-[#ff6b32]" />
                   </div>
-                  <button type="button" onClick={() => handleSaveMinStock(ingredient)} disabled={savingMinStockId === ingredient.id || minStockDrafts[ingredient.id] === undefined} className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">{savingMinStockId === ingredient.id ? "…" : "Definir"}</button>
+                  <button type="button" onClick={() => handleSaveMinStock(ingredient)} disabled={savingMinStockId === ingredient.id || minStockDrafts[ingredient.id] === undefined} className={`rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:opacity-50 ${savingMinStockId === ingredient.id ? "cursor-wait" : "disabled:cursor-not-allowed"}`}>{savingMinStockId === ingredient.id ? "…" : "Definir"}</button>
                 </div>
               </div>
               {expandedHistoryId === ingredient.id && (
