@@ -127,11 +127,12 @@ export function buildReceiptBytes(order: OrderRecord): Uint8Array {
   bytes.push(...CMD_ALIGN_LEFT);
   bytes.push(...divider());
   if (order.customerName || order.customerPhone) {
-    // Negrito no meio da linha não é confiável em impressoras térmicas
-    // baratas (muito clone só aplica a formatação a partir da próxima
-    // linha) — maiúsculo funciona igual em qualquer modelo, sem depender
-    // de nenhum comando especial.
-    bytes.push(...textBytes(`Cliente: ${(order.customerName || "-").toUpperCase()}`), 0x0a);
+    // O negrito precisa ligar já no começo da linha (antes de qualquer
+    // texto normal) — é assim que as outras linhas em negrito deste
+    // recibo (ex.: "Pedido #") funcionam; ligar no meio da linha, como
+    // era antes, não pega em impressoras clone mais simples. Maiúsculo
+    // reforça o destaque mesmo se algum modelo ainda ignorar o negrito.
+    bytes.push(...CMD_BOLD_ON, ...textBytes(`Cliente: ${(order.customerName || "-").toUpperCase()}`), ...CMD_BOLD_OFF, 0x0a);
     if (order.customerPhone) bytes.push(...textBytes(`Whats: ${order.customerPhone}`), 0x0a);
     bytes.push(...divider());
   }
