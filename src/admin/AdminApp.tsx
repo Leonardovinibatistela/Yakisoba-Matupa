@@ -918,7 +918,7 @@ function Dashboard({ user }: { user: User }) {
                     }
 
                     return (
-                      <div key={item.id} className={`flex items-center gap-3 px-4 py-3 ${isHidden ? "opacity-50" : ""}`}>
+                      <div key={item.id} className={`flex flex-wrap items-center gap-3 px-4 py-3 ${isHidden ? "opacity-50" : ""}`}>
                         <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-white/[0.04]">
                           {currentPhoto ? <img src={currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-[9px] font-bold text-white/40">Sem foto</div>}
                         </div>
@@ -933,11 +933,10 @@ function Dashboard({ user }: { user: User }) {
                             <span className="text-xs text-white/50">{formatTotal(currentPrice)}</span>
                             <button type="button" onClick={() => startEditItem(item.id, currentName, currentPrice, currentDescription)} className="text-[10px] font-bold text-[#ff875c] underline decoration-dotted underline-offset-2 hover:text-white">Editar</button>
                             {hasAnyOverride && <button type="button" onClick={() => handleResetItemAll(item.id)} disabled={isSavingItem} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
-                            <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
+                            <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${recipes[item.id]?.length ? "border-emerald-400/30 text-emerald-300 hover:border-emerald-400/60" : "border-amber-400/40 text-amber-300 hover:border-amber-400/70"}`}>🧂 Ficha técnica{recipes[item.id]?.length ? " ✓" : " (vazia)"}</button>
                           </div>
-                          {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
                         </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <div className="flex shrink-0 flex-col items-end gap-1.5 max-sm:w-full max-sm:flex-row max-sm:flex-wrap max-sm:items-center max-sm:justify-between">
                           <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
                             {isToggling ? "…" : isSoldOut ? "Esgotado — reativar" : "Marcar esgotado"}
                           </button>
@@ -947,6 +946,7 @@ function Dashboard({ user }: { user: User }) {
                             <button type="button" onClick={() => handleToggleHidden(item.id, item.name, isHidden)} disabled={isTogglingHidden} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isTogglingHidden ? "…" : isHidden ? "↩️ Restaurar no site" : "🗑 Excluir do site"}</button>
                           )}
                         </div>
+                        {expandedRecipeItemId === item.id && <div className="w-full"><RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} /></div>}
                       </div>
                     );
                   })}
@@ -967,14 +967,14 @@ function Dashboard({ user }: { user: User }) {
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
                 <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
                   {section.items.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                    <div key={item.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                       <div className="min-w-0 flex-1">
                         <span className="text-sm font-bold text-white">{item.name}</span>
                         <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
+                          <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${recipes[item.id]?.length ? "border-emerald-400/30 text-emerald-300 hover:border-emerald-400/60" : "border-amber-400/40 text-amber-300 hover:border-amber-400/70"}`}>🧂 Ficha técnica{recipes[item.id]?.length ? " ✓" : " (vazia)"}</button>
                         </div>
-                        {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={item.name} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
                       </div>
+                      {expandedRecipeItemId === item.id && <div className="w-full"><RecipeEditor itemId={item.id} itemName={item.name} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} /></div>}
                     </div>
                   ))}
                 </div>
@@ -1045,7 +1045,7 @@ function Dashboard({ user }: { user: User }) {
                   const isUploadingComboPhoto = uploadingComboPhotoId === combo.id;
                   const isRemovingCombo = removingComboId === combo.id;
                   return (
-                    <div key={combo.id} className="flex flex-col gap-3 rounded-xl border border-white/10 p-4 sm:flex-row sm:items-start">
+                    <div key={combo.id} className="flex flex-col gap-3 rounded-xl border border-white/10 p-4 sm:flex-row sm:flex-wrap sm:items-start">
                       <label className={`relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60 ${isUploadingComboPhoto ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
                         {combo.image ? <img src={combo.image} alt={combo.name} className="h-full w-full object-cover" /> : "Sem foto"}
                         <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">{isUploadingComboPhoto ? "…" : "Trocar"}</span>
@@ -1075,10 +1075,10 @@ function Dashboard({ user }: { user: User }) {
                           ); })}
                         </div>
                         <p className="mt-1.5 text-[11px] text-white/40">{formatDaysLabel(combo.days)}</p>
-                        <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === combo.id ? null : combo.id)} className="mt-1.5 block text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[combo.id]?.length ? "" : " (vazia)"}</button>
-                        {expandedRecipeItemId === combo.id && <RecipeEditor itemId={combo.id} itemName={combo.name} ingredients={ingredients} recipe={recipes[combo.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
+                        <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === combo.id ? null : combo.id)} className={`mt-2 rounded-full border px-2.5 py-1 text-[11px] font-bold transition ${recipes[combo.id]?.length ? "border-emerald-400/30 text-emerald-300 hover:border-emerald-400/60" : "border-amber-400/40 text-amber-300 hover:border-amber-400/70"}`}>🧂 Ficha técnica{recipes[combo.id]?.length ? " ✓" : " (vazia)"}</button>
                       </div>
                       <button type="button" onClick={() => handleRemoveCombo(combo)} disabled={isRemovingCombo} className="shrink-0 text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50 sm:self-start">{isRemovingCombo ? "Removendo…" : "🗑 Remover combo"}</button>
+                      {expandedRecipeItemId === combo.id && <div className="w-full"><RecipeEditor itemId={combo.id} itemName={combo.name} ingredients={ingredients} recipe={recipes[combo.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} /></div>}
                     </div>
                   );
                 })}
