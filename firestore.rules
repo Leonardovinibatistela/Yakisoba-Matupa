@@ -3,6 +3,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Quem é admin: SÓ as contas de login listadas aqui (o e-mail que entra
+    // no painel). Não basta estar logado — qualquer pessoa que consiga criar
+    // uma conta no Firebase Auth estaria "logada", e o painel guarda pedidos
+    // com nome, telefone e endereço de clientes. Se mais alguém precisar
+    // entrar no painel, é só somar o e-mail dele nessa lista (em minúsculas)
+    // e publicar as regras de novo.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['lv6696184@gmail.com'];
+    }
+
     // Contador de pedidos: qualquer pessoa pode ler o valor atual (necessário
     // pra transação funcionar). Acumula normal entre os dias (não reinicia
     // todo dia) — só pode incrementar de 1 em 1, OU voltar pro 1 quando o
@@ -18,9 +29,9 @@ service cloud.firestore {
     // Pedidos: qualquer cliente pode CRIAR um pedido novo pelo site (checkout
     // público), mas só se os dados tiverem tipo e tamanho plausíveis — evita
     // alguém escrever direto no banco (fora do site) com preço inventado ou
-    // data falsa pra bagunçar o painel. Só o admin autenticado (login do
-    // painel) pode ler, editar ou apagar — ninguém de fora enxerga os
-    // pedidos de outras pessoas.
+    // data falsa pra bagunçar o painel. Só o admin (login do painel) pode
+    // ler, editar ou apagar — ninguém de fora enxerga os pedidos de outras
+    // pessoas.
     match /orders/{orderId} {
       allow create: if request.resource.data.keys().hasOnly(['customerName', 'customerPhone', 'items', 'subtotal', 'deliveryFee', 'total', 'deliveryType', 'location', 'cutlery', 'paymentMethod', 'notes', 'orderNumber', 'createdAt'])
         && request.resource.data.customerName is string
@@ -48,31 +59,36 @@ service cloud.firestore {
         && request.resource.data.location.size() <= 300
         && request.resource.data.orderNumber is int
         && request.resource.data.createdAt == request.time;
-      allow read, update, delete: if request.auth != null;
+      allow read, update, delete: if isAdmin();
     }
 
     // Fotos do carrossel: qualquer visitante do site pode ver (pra aparecer
-    // pro público), mas só o admin autenticado pode adicionar/remover.
+    // pro público), mas só o admin pode adicionar/remover.
     match /carouselImages/{imageId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isAdmin();
     }
 
-    // Itens esgotados e preços alterados: qualquer visitante do site precisa
-    // ler (pra saber o que esconder e por quanto vender), mas só o admin
-    // autenticado escreve. Um documento por tipo de ajuste (soldOut,
-    // priceOverrides) dentro dessa coleção.
+    // Ajustes do cardápio e do painel. Um documento por assunto dentro dessa
+    // coleção. Só os documentos da lista abaixo são públicos — são os que o
+    // site precisa ler pra saber o que esconder, por quanto vender, se a loja
+    // está aberta etc. TODO o resto (ficha técnica "recipes", taxas de
+    // pagamento "paymentFees", custo de embalagem/motoboy "orderCosts" e
+    // qualquer documento novo que aparecer aqui) é só do admin: quem vê a
+    // ficha técnica e os custos consegue copiar a receita e saber a margem.
+    // Escrever é sempre só o admin.
     match /menuStatus/{document} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read: if document in ['soldOut', 'priceOverrides', 'nameOverrides', 'descriptionOverrides', 'photoOverrides', 'hiddenItems', 'manualOpen', 'emergencyPause']
+        || isAdmin();
+      allow write: if isAdmin();
     }
 
     // Itens de cardápio que o próprio admin adiciona pelo painel (sabor
     // novo, combinado novo etc.). Qualquer visitante do site precisa ler
-    // (pra aparecer no cardápio), mas só o admin autenticado escreve.
+    // (pra aparecer no cardápio), mas só o admin escreve.
     match /customMenuItems/{itemId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if isAdmin()
         && request.resource.data.sectionId is string
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
@@ -83,16 +99,15 @@ service cloud.firestore {
         && request.resource.data.price >= 0
         && request.resource.data.price <= 5000
         && request.resource.data.image is string;
-      allow update, delete: if request.auth != null;
+      allow update, delete: if isAdmin();
     }
 
     // Combos da "Promoção do dia" — o admin escolhe nome, preço, foto e em
     // quais dias da semana cada combo aparece. Qualquer visitante do site
-    // precisa ler (pra aparecer a promoção certa), mas só o admin
-    // autenticado escreve.
+    // precisa ler (pra aparecer a promoção certa), mas só o admin escreve.
     match /dailyCombos/{comboId} {
       allow read: if true;
-      allow create: if request.auth != null
+      allow create: if isAdmin()
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 120
@@ -103,32 +118,32 @@ service cloud.firestore {
         && request.resource.data.price <= 5000
         && request.resource.data.image is string
         && request.resource.data.days is list;
-      allow update, delete: if request.auth != null;
+      allow update, delete: if isAdmin();
     }
 
     // Ingredientes (estoque + custo médio) e histórico de compras — só o
-    // admin autenticado lê e escreve, o site público nunca acessa isso.
+    // admin lê e escreve, o site público nunca acessa isso.
     match /ingredients/{ingredientId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     match /ingredientPurchases/{purchaseId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
 
-    // Despesas fixas (mensais) — só o admin autenticado lê e escreve.
+    // Despesas fixas (mensais) — só o admin lê e escreve.
     match /fixedExpenses/{expenseId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
     // Histórico de valores de cada despesa fixa (pra comparar mês a mês) —
-    // só o admin autenticado lê e escreve.
+    // só o admin lê e escreve.
     match /fixedExpenseHistory/{entryId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
 
     // Extrato de movimentação de estoque (baixa/devolução por pedido) — só o
-    // admin autenticado lê e escreve, o site público nunca acessa isso.
+    // admin lê e escreve, o site público nunca acessa isso.
     match /stockMovements/{movementId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAdmin();
     }
 
     // Tudo que não foi listado acima continua bloqueado por padrão.
