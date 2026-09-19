@@ -25,6 +25,7 @@ import { deductStockForOrder, restoreStockForOrder } from "./stockDeduction";
 import { subscribeStockMovements, type StockMovement } from "./stockMovements";
 import IngredientsPanel from "./IngredientsPanel";
 import RecipeEditor from "./RecipeEditor";
+import { subscribeOrderCostRates, setOrderCostRates as persistOrderCostRates, DEFAULT_ORDER_COST_RATES, type OrderCostRates } from "./orderCosts";
 import FinanceiroPanel from "./FinanceiroPanel";
 import StockMovementsLog from "./StockMovementsLog";
 import ShoppingList from "./ShoppingList";
@@ -182,6 +183,8 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeFixedExpenseHistory(setFixedExpenseHistory), []);
   const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
   useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
+  const [orderCostRates, setOrderCostRates] = useState<OrderCostRates>(DEFAULT_ORDER_COST_RATES);
+  useEffect(() => subscribeOrderCostRates(setOrderCostRates), []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   useEffect(() => subscribeStockMovements(setStockMovements), []);
   const handleConnectPrinter = () => {
@@ -845,11 +848,13 @@ function Dashboard({ user }: { user: User }) {
             fixedExpenses={fixedExpenses}
             fixedExpenseHistory={fixedExpenseHistory}
             paymentFeeRates={paymentFeeRates}
+            orderCostRates={orderCostRates}
             itemCatalog={itemCatalog}
             onAddFixedExpense={addFixedExpense}
             onUpdateFixedExpense={updateFixedExpense}
             onDeleteFixedExpense={deleteFixedExpense}
             onSetPaymentFeeRates={persistPaymentFeeRates}
+            onSetOrderCostRates={persistOrderCostRates}
           />
           <StockMovementsLog movements={stockMovements} />
           </>

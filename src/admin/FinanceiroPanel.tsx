@@ -4,6 +4,7 @@ import type { Ingredient } from "./ingredients";
 import type { Recipes } from "./recipes";
 import type { FixedExpense, FixedExpenseHistoryEntry } from "./fixedExpenses";
 import type { PaymentFeeRates } from "./paymentFees";
+import type { OrderCostRates } from "./orderCosts";
 import EditableCell from "./EditableCell";
 import { analyzeDishes, breakEven, ingredientsWithoutCost, paymentBreakdown, soldByItem, summarizeOrders, type BreakEven, type CatalogItem, type DishRow, type DishWithoutRecipe, type PeriodSummary } from "./financeiroMath";
 import { SAVE_FAILED, parseNumber, toDraft, withTimeout } from "./stockFormat";
@@ -31,11 +32,11 @@ function Card({ eyebrow, title, children, className = "" }: { eyebrow: string; t
   );
 }
 
-function Line({ label, value, tone = "text-white", strong = false }: { label: string; value: string; tone?: string; strong?: boolean }) {
+function Line({ label, value, tone = "text-white", strong = false, sub = false }: { label: string; value: string; tone?: string; strong?: boolean; sub?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5 text-xs">
-      <dt className={strong ? "font-bold text-white/85" : "text-white/55"}>{label}</dt>
-      <dd className={`tabular-nums ${strong ? "font-bold" : ""} ${tone}`}>{value}</dd>
+    <div className={`flex items-baseline justify-between gap-3 text-xs ${sub ? "py-0.5 pl-3 text-[11px]" : "py-1.5"}`}>
+      <dt className={strong ? "font-bold text-white/85" : sub ? "text-white/40" : "text-white/55"}>{label}</dt>
+      <dd className={`tabular-nums ${strong ? "font-bold" : ""} ${sub ? "text-white/40" : tone}`}>{value}</dd>
     </div>
   );
 }
@@ -54,8 +55,11 @@ function PeriodCard({ title, summary, fixedTotal, purchasesTotal }: { title: str
       </div>
       <dl className="mt-2 divide-y divide-white/5">
         <Line label="Vendas (bruto)" value={money(summary.bruto)} strong />
+        {summary.taxaEntrega > 0 && <Line sub label={`inclui taxa de entrega · ${summary.entregas} entrega${summary.entregas === 1 ? "" : "s"}`} value={money(summary.taxaEntrega)} />}
         <Line label="− Ingredientes" value={money(summary.custo)} />
         <Line label="− Taxas de pagamento" value={money(summary.taxas)} />
+        <Line label="− Embalagem" value={money(summary.embalagem)} />
+        <Line label={`− Motoboy${summary.entregas > 0 ? ` (${summary.entregas} entrega${summary.entregas === 1 ? "" : "s"})` : ""}`} value={money(summary.motoboy)} />
         {isMonth && <Line label="− Gastos fixos do mês inteiro" value={money(fixedTotal)} />}
       </dl>
       <div className="mt-2 rounded-lg bg-white/[0.05] px-3 py-2.5">
@@ -136,7 +140,7 @@ const DISH_HEADERS: { key: DishSortKey; label: string; align: "left" | "right"; 
   { key: "sold", label: "Vendidos no mês", align: "right" },
   { key: "price", label: "Preço", align: "right" },
   { key: "cost", label: "Custo", align: "right", hint: "Pela ficha técnica, com o custo médio atual dos ingredientes." },
-  { key: "margin", label: "Sobra por prato", align: "right", hint: "Preço − custo dos ingredientes (antes de taxas e gastos fixos)." },
+  { key: "margin", label: "Sobra por prato", align: "right", hint: "Preço − custo dos ingredientes (antes de taxas, embalagem, motoboy e gastos fixos — esses são por pedido, não por prato)." },
   { key: "marginPct", label: "Margem", align: "right", hint: "Quanto do preço sobra depois do custo dos ingredientes. Abaixo de 30% pede atenção." },
   { key: "profit", label: "Lucro no mês", align: "right", hint: "Sobra por prato × quantidade vendida no mês (estimativa, com o custo de hoje)." },
 ];
@@ -247,7 +251,49 @@ function PaymentFeesEditor({ rates, onSave, onSaved }: { rates: PaymentFeeRates;
   );
 }
 
-export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, fixedExpenseHistory, paymentFeeRates, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense, onSetPaymentFeeRates }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; fixedExpenseHistory: FixedExpenseHistoryEntry[]; paymentFeeRates: PaymentFeeRates; itemCatalog: CatalogItem[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void> }) {
+function OrderCostsEditor({ rates, monthOrders, monthDeliveries, avgDeliveryFee, onSave, onSaved }: { rates: OrderCostRates; monthOrders: number; monthDeliveries: number; avgDeliveryFee: number | null; onSave: (rates: OrderCostRates) => Promise<void>; onSaved: (message: string) => void }) {
+  const [drafts, setDrafts] = useState({ packaging: toDraft(rates.packaging), courier: toDraft(rates.courier) });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const parseMoney = (raw: string) => (raw.trim() === "" ? 0 : parseNumber(raw));
+  const packaging = parseMoney(drafts.packaging);
+  const courier = parseMoney(drafts.courier);
+  const invalid = [packaging, courier].some((value) => Number.isNaN(value) || value < 0 || value > 1000);
+  const handleSave = () => {
+    if (invalid) { setError("Cada valor tem que ser um número em reais, de 0 a 1000."); return; }
+    setError(null);
+    setSaving(true);
+    withTimeout(onSave({ packaging, courier }))
+      .then(() => onSaved("Embalagem e motoboy salvos"))
+      .catch(() => setError(SAVE_FAILED))
+      .finally(() => setSaving(false));
+  };
+  const fields = [
+    { key: "packaging" as const, label: "Embalagem por pedido (R$)", hint: "Caixinha, sacola, hashi, molho... tudo que vai junto. Vale pra todo pedido." },
+    { key: "courier" as const, label: "Motoboy por entrega (R$)", hint: "O que você paga ao motoboy em cada entrega. Só conta nos pedidos de entrega." + (avgDeliveryFee !== null ? " Se ele fica com toda a taxa que o cliente paga (" + money(avgDeliveryFee) + "), digita " + toDraft(avgDeliveryFee) + "." : "") },
+  ];
+  return (
+    <Card eyebrow="Embalagem e motoboy" title="O que cada pedido custa além dos ingredientes">
+      <p className="mt-1.5 text-sm text-white/50">Sem isso o lucro fica maior do que é de verdade. Vale também pros pedidos que já saíram (usa o valor de hoje). Deixa 0 no que você não tem.</p>
+      <div className="mt-4 flex flex-wrap items-start gap-3">
+        {fields.map((field) => (
+          <div key={field.key} className="w-full max-w-[15rem]">
+            <label htmlFor={"ordercost-" + field.key} className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{field.label}</label>
+            <input id={"ordercost-" + field.key} type="text" inputMode="decimal" value={drafts[field.key]} onChange={(event) => { setDrafts((current) => ({ ...current, [field.key]: event.target.value })); setError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleSave(); }} className="mt-1.5 min-h-[44px] w-full rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-[16px] text-white outline-none focus:border-[#ff6b32] md:min-h-0 md:text-sm" />
+            <p className="mt-1 text-[11px] leading-snug text-white/40">{field.hint}</p>
+          </div>
+        ))}
+        <button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] rounded-full bg-[#ff5a19] px-5 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:mt-[1.375rem] md:min-h-0">{saving ? "Salvando…" : "Salvar"}</button>
+      </div>
+      {!invalid && monthOrders > 0 && (packaging > 0 || courier > 0) && (
+        <p className="mt-3 text-xs text-white/45">Neste mês dá: {monthOrders} pedido{monthOrders === 1 ? "" : "s"} × {money(packaging)} = <strong className="text-white/70">{money(monthOrders * packaging)}</strong> de embalagem e {monthDeliveries} entrega{monthDeliveries === 1 ? "" : "s"} × {money(courier)} = <strong className="text-white/70">{money(monthDeliveries * courier)}</strong> de motoboy.</p>
+      )}
+      {error && <p role="alert" className="mt-2 text-xs font-semibold text-red-400">{error}</p>}
+    </Card>
+  );
+}
+
+export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, monthPurchasesTotal, ingredients, recipes, fixedExpenses, fixedExpenseHistory, paymentFeeRates, orderCostRates, itemCatalog, onAddFixedExpense, onUpdateFixedExpense, onDeleteFixedExpense, onSetPaymentFeeRates, onSetOrderCostRates }: { todayOrders: OrderRecord[]; weekOrders: OrderRecord[]; monthOrders: OrderRecord[]; monthPurchasesTotal: number; ingredients: Ingredient[]; recipes: Recipes; fixedExpenses: FixedExpense[]; fixedExpenseHistory: FixedExpenseHistoryEntry[]; paymentFeeRates: PaymentFeeRates; orderCostRates: OrderCostRates; itemCatalog: CatalogItem[]; onAddFixedExpense: (name: string, amount: number) => Promise<void>; onUpdateFixedExpense: (id: string, name: string, amount: number) => Promise<void>; onDeleteFixedExpense: (id: string) => Promise<void>; onSetPaymentFeeRates: (rates: PaymentFeeRates) => Promise<void>; onSetOrderCostRates: (rates: OrderCostRates) => Promise<void> }) {
   const [newExpenseName, setNewExpenseName] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
   const [addingExpense, setAddingExpense] = useState(false);
@@ -263,9 +309,9 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const today = summarizeOrders(todayOrders, paymentFeeRates);
-  const week = summarizeOrders(weekOrders, paymentFeeRates);
-  const month = summarizeOrders(monthOrders, paymentFeeRates);
+  const today = summarizeOrders(todayOrders, paymentFeeRates, orderCostRates);
+  const week = summarizeOrders(weekOrders, paymentFeeRates, orderCostRates);
+  const month = summarizeOrders(monthOrders, paymentFeeRates, orderCostRates);
   const fixedTotal = fixedExpenses.reduce((total, expense) => total + expense.amount, 0);
   const be = breakEven(month, fixedTotal, now);
   const payments = paymentBreakdown(monthOrders, paymentFeeRates);
@@ -273,6 +319,7 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
   const dishesTotal = withRecipe.length + withoutRecipe.length;
   const noCostIngredients = ingredientsWithoutCost(ingredients, recipes);
   const allRatesZero = paymentFeeRates.pix === 0 && paymentFeeRates.cartao === 0 && paymentFeeRates.dinheiro === 0;
+  const noOrderCosts = orderCostRates.packaging === 0 && orderCostRates.courier === 0;
   const costOk = month.orders === 0 || month.completos === month.orders;
   const allGood = costOk && withoutRecipe.length === 0 && noCostIngredients.length === 0 && fixedExpenses.length > 0;
 
@@ -325,6 +372,7 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
           <HealthItem ok={withoutRecipe.length === 0} title={withoutRecipe.length === 0 ? `Os ${dishesTotal} pratos têm ficha técnica` : `${withRecipe.length} de ${dishesTotal} pratos com ficha técnica`} hint={withoutRecipe.length > 0 ? "Cardápio → botão 🧂 Ficha técnica de cada prato (começa pelos que mais vendem, lista mais abaixo)." : undefined} />
           <HealthItem ok={noCostIngredients.length === 0} title={noCostIngredients.length === 0 ? "Todos os ingredientes das fichas têm compra registrada" : `${noCostIngredients.length} ingrediente${noCostIngredients.length === 1 ? "" : "s"} de ficha sem compra registrada`} hint={noCostIngredients.length > 0 ? `Sem compra o custo é desconhecido: ${noCostIngredients.slice(0, 6).map((ingredient) => ingredient.name).join(", ")}${noCostIngredients.length > 6 ? "…" : ""}. Estoque → ＋ Compra.` : undefined} />
           <HealthItem ok={fixedExpenses.length > 0} title={fixedExpenses.length > 0 ? `${fixedExpenses.length} despesa${fixedExpenses.length === 1 ? "" : "s"} fixa${fixedExpenses.length === 1 ? "" : "s"} cadastrada${fixedExpenses.length === 1 ? "" : "s"}` : "Nenhuma despesa fixa cadastrada"} hint={fixedExpenses.length === 0 ? "Sem aluguel, luz, funcionário etc. o lucro líquido não desconta nada. Mais abaixo." : undefined} />
+          {noOrderCosts && <HealthItem ok={false} info title="Embalagem e motoboy em R$ 0" hint="Tudo bem se você não gasta com isso. Se usa embalagem ou paga motoboy, configura mais abaixo — senão o lucro aparece maior do que é." />}
           {allRatesZero && <HealthItem ok={false} info title="Taxas de pagamento em 0%" hint="Tudo bem se você não paga taxa. Se usa maquininha de cartão, configura mais abaixo." />}
         </ul>
       </Card>
@@ -386,6 +434,8 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
       </Card>
 
       <PaymentFeesEditor key={JSON.stringify(paymentFeeRates)} rates={paymentFeeRates} onSave={onSetPaymentFeeRates} onSaved={showToast} />
+
+      <OrderCostsEditor key={JSON.stringify(orderCostRates)} rates={orderCostRates} monthOrders={month.orders} monthDeliveries={month.entregas} avgDeliveryFee={month.entregas > 0 && month.taxaEntrega > 0 ? month.taxaEntrega / month.entregas : null} onSave={onSetOrderCostRates} onSaved={showToast} />
 
       {toast && <div role="status" className="fixed bottom-5 right-5 z-50 max-w-[90vw] rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20">✓ {toast}</div>}
     </div>

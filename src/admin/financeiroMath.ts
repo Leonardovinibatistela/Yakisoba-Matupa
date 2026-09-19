@@ -2,6 +2,7 @@ import type { OrderRecord } from "./adminData";
 import type { Ingredient } from "./ingredients";
 import type { Recipes } from "./recipes";
 import type { PaymentFeeRates, PaymentMethod } from "./paymentFees";
+import type { OrderCostRates } from "./orderCosts";
 import { resolveRecipeItemId } from "./recipeIds";
 
 // Só contas — nada de tela nem de Firebase aqui, pra dar pra testar sozinho.
@@ -22,12 +23,22 @@ export function orderCostStatus(order: OrderRecord): CostStatus {
 
 export const orderFee = (order: OrderRecord, rates: PaymentFeeRates): number => order.total * (rates[order.paymentMethod as PaymentMethod] ?? 0);
 
+/** Embalagem vale pra todo pedido; motoboy só pra entrega. Calculado com os valores de hoje (igual a taxa de pagamento), então vale também pros pedidos antigos. */
+export const orderPackaging = (costs: OrderCostRates): number => costs.packaging;
+export const orderCourier = (order: OrderRecord, costs: OrderCostRates): number => (order.deliveryType === "entrega" ? costs.courier : 0);
+
 export type PeriodSummary = {
   orders: number;
   bruto: number;
   custo: number;
   taxas: number;
-  /** bruto − custo dos ingredientes − taxas de pagamento (ainda sem gastos fixos) */
+  embalagem: number;
+  motoboy: number;
+  /** pedidos de entrega (base do custo de motoboy) */
+  entregas: number;
+  /** quanto do bruto é taxa de entrega cobrada dos clientes (não é venda de comida) */
+  taxaEntrega: number;
+  /** bruto − ingredientes − taxas de pagamento − embalagem − motoboy (ainda sem gastos fixos) */
   margem: number;
   margemPct: number | null;
   ticket: number | null;
@@ -38,23 +49,29 @@ export type PeriodSummary = {
   margemPctCompleta: number | null;
 };
 
-export function summarizeOrders(orders: OrderRecord[], rates: PaymentFeeRates): PeriodSummary {
-  let bruto = 0, custo = 0, taxas = 0;
+export function summarizeOrders(orders: OrderRecord[], rates: PaymentFeeRates, costs: OrderCostRates): PeriodSummary {
+  let bruto = 0, custo = 0, taxas = 0, embalagem = 0, motoboy = 0, entregas = 0, taxaEntrega = 0;
   let completos = 0, parciais = 0, semCusto = 0;
   let brutoCompleto = 0, margemCompleta = 0;
   orders.forEach((order) => {
     const fee = orderFee(order, rates);
+    const packaging = orderPackaging(costs);
+    const courier = orderCourier(order, costs);
     bruto += order.total;
     custo += order.ingredientCost;
     taxas += fee;
+    embalagem += packaging;
+    motoboy += courier;
+    if (order.deliveryType === "entrega") entregas += 1;
+    taxaEntrega += order.deliveryFee;
     const status = orderCostStatus(order);
-    if (status === "completo") { completos += 1; brutoCompleto += order.total; margemCompleta += order.total - order.ingredientCost - fee; }
+    if (status === "completo") { completos += 1; brutoCompleto += order.total; margemCompleta += order.total - order.ingredientCost - fee - packaging - courier; }
     else if (status === "parcial") parciais += 1;
     else semCusto += 1;
   });
-  const margem = bruto - custo - taxas;
+  const margem = bruto - custo - taxas - embalagem - motoboy;
   return {
-    orders: orders.length, bruto, custo, taxas, margem,
+    orders: orders.length, bruto, custo, taxas, embalagem, motoboy, entregas, taxaEntrega, margem,
     margemPct: bruto > 0 ? margem / bruto : null,
     ticket: orders.length > 0 ? bruto / orders.length : null,
     completos, parciais, semCusto,
