@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
 import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
-import { addCarouselImage, CAROUSEL_MAX_IMAGES, fetchCarouselImages, removeCarouselImage, type CarouselImage } from "../carousel";
 import { uploadImageToCloudinary } from "../cloudinary";
 import { addonSections, menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
@@ -35,14 +34,13 @@ const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "cardapio" | "combos" | "fotos" | "estoque" | "financeiro";
+type AdminTab = "visao" | "cardapio" | "combos" | "estoque" | "financeiro";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
-  { id: "fotos", label: "Fotos" },
   { id: "estoque", label: "Estoque" },
   { id: "financeiro", label: "Financeiro" },
 ];
@@ -123,8 +121,8 @@ function Dashboard({ user }: { user: User }) {
   // Se os pedidos demorarem demais pra carregar (conexão ruim, instabilidade
   // do Firebase), avisa em vez de deixar a tela girando pra sempre sem
   // explicação — só afeta quem está nas abas que realmente precisam de
-  // pedido (Visão, Financeiro); as outras abas (Estoque, Cardápio, Combos,
-  // Fotos) funcionam mesmo enquanto isso.
+  // pedido (Visão, Financeiro); as outras abas (Estoque, Cardápio, Combos)
+  // funcionam mesmo enquanto isso.
   const [ordersTimedOut, setOrdersTimedOut] = useState(false);
   useEffect(() => {
     if (orders !== null) { setOrdersTimedOut(false); return; }
@@ -139,9 +137,6 @@ function Dashboard({ user }: { user: User }) {
   const [pickedDayOrders, setPickedDayOrders] = useState<OrderRecord[] | null>(null);
   const [pickedMonthOrders, setPickedMonthOrders] = useState<OrderRecord[] | null>(null);
   const [pickedLoading, setPickedLoading] = useState(false);
-  const [carouselImages, setCarouselImages] = useState<CarouselImage[] | null>(null);
-  const [carouselError, setCarouselError] = useState("");
-  const [uploading, setUploading] = useState(false);
   const orderListRef = useRef<HTMLDivElement>(null);
   const [isOrderListFullscreen, setIsOrderListFullscreen] = useState(false);
   useEffect(() => {
@@ -475,11 +470,8 @@ function Dashboard({ user }: { user: User }) {
     }
   };
 
-  const loadCarouselImages = () => fetchCarouselImages().then(setCarouselImages).catch(() => setCarouselError("Não foi possível carregar as fotos do carrossel."));
-
   useEffect(() => {
     const unsubscribe = subscribeToRecentOrders(setOrders, () => setError("Não foi possível carregar os pedidos."));
-    loadCarouselImages();
     return unsubscribe;
   }, []);
 
@@ -588,24 +580,6 @@ function Dashboard({ user }: { user: User }) {
   const isLastMonthPresetPicked = pickedDateObj.getFullYear() === lastMonthPresetDate.getFullYear() && pickedDateObj.getMonth() === lastMonthPresetDate.getMonth() && pickedDateObj.getDate() === 1;
   const showDayTop3 = !isTodayPicked && !isLastMonthPresetPicked;
   const pickedTop3 = bestSellers((showDayTop3 ? pickedDayOrders : pickedMonthOrders) ?? [], 3);
-
-  const handleUploadImage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setCarouselError("");
-    setUploading(true);
-    uploadImageToCloudinary(file)
-      .then(({ url, publicId }) => addCarouselImage(url, publicId))
-      .then(loadCarouselImages)
-      .catch(() => setCarouselError("Não foi possível enviar essa foto. Tenta de novo."))
-      .finally(() => setUploading(false));
-  };
-
-  const handleRemoveImage = (id: string) => {
-    setCarouselError("");
-    removeCarouselImage(id).then(loadCarouselImages).catch(() => setCarouselError("Não foi possível remover essa foto."));
-  };
 
   const ordersLoadingNotice = (
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6 text-center">
@@ -802,32 +776,6 @@ function Dashboard({ user }: { user: User }) {
         </div>
 
         </> : ordersLoadingNotice)}
-
-        {activeTab === "fotos" && <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
-          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Carrossel do site</p>
-          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Fotos em destaque para o público</h2>
-          <p className="mt-1.5 text-sm text-white/50">Máximo de {CAROUSEL_MAX_IMAGES} fotos por vez. Pra trocar, remova uma antes de adicionar outra.</p>
-          {carouselError && <p className="mt-3 text-sm text-red-400">{carouselError}</p>}
-          {!carouselImages ? (
-            <p className="mt-4 text-sm text-white/50">Carregando…</p>
-          ) : (
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {carouselImages.map((image) => (
-                <div key={image.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
-                  <img src={image.url} alt="Foto do carrossel" className="h-40 w-full object-cover" />
-                  <button type="button" onClick={() => handleRemoveImage(image.id)} className="flex w-full items-center justify-center gap-1.5 border-t border-white/10 py-2.5 text-xs font-bold text-red-400 transition hover:bg-red-500/10">Remover</button>
-                </div>
-              ))}
-              {carouselImages.length < CAROUSEL_MAX_IMAGES && (
-                <label className={`flex h-40 min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 text-sm font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${uploading ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
-                  <PlusIconAdmin />
-                  {uploading ? "Enviando…" : "Adicionar foto"}
-                  <input type="file" accept="image/*" onChange={handleUploadImage} disabled={uploading} className="hidden" />
-                </label>
-              )}
-            </div>
-          )}
-        </div>}
 
         {activeTab === "estoque" && (
           <div className="space-y-8">
