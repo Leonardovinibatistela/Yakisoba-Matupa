@@ -560,7 +560,7 @@ function Dashboard({ user }: { user: User }) {
   const weekOrders = orders ? ordersInRange(orders, startOfWeek(now)) : [];
   const monthOrders = orders ? ordersInRange(orders, startOfMonth(now)) : [];
   const itemCatalog = [
-    ...menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price })),
+    ...menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price, hidden: hiddenIds.has(item.id) })),
     ...addonSections.flatMap((section) => section.items).map((item) => ({ id: item.id, name: item.name, price: item.price })),
     ...(dailyCombos ?? []).map((combo) => ({ id: combo.id, name: combo.name, price: combo.price })),
   ];

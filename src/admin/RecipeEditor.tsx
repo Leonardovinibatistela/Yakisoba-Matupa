@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Ingredient, IngredientUnit } from "./ingredients";
 import type { RecipeIngredient, Recipes } from "./recipes";
 
-type Row = { key: number; ingredientId: string; text: string; inputUnit: string };
+// keepQuantity: linha cujo ingrediente não foi achado (apagado, ou a lista ainda não carregou) — a quantidade original é mantida como está em vez de sumir da ficha.
+type Row = { key: number; ingredientId: string; text: string; inputUnit: string; keepQuantity?: number };
 type SaveStatus = "idle" | "pending" | "saving" | "saved" | "error";
 
 const UNIT_OPTIONS: { value: IngredientUnit; label: string }[] = [
@@ -34,6 +35,7 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
 
   const rowsFromRecipe = (source: RecipeIngredient[]): Row[] => source.map((entry) => {
     const ingredient = ingredients.find((candidate) => candidate.id === entry.ingredientId);
+    if (!ingredient) return { key: keyCounter.current++, ingredientId: entry.ingredientId, text: "", inputUnit: "", keepQuantity: entry.quantity };
     const small = ingredient && (ingredient.unit === "kg" || ingredient.unit === "l") && entry.quantity < 1;
     if (small) return { key: keyCounter.current++, ingredientId: entry.ingredientId, text: toText(entry.quantity * 1000), inputUnit: ingredient.unit === "kg" ? "g" : "ml" };
     return { key: keyCounter.current++, ingredientId: entry.ingredientId, text: toText(entry.quantity), inputUnit: ingredient ? inputUnitsFor(ingredient.unit).slice(-1)[0].label : "" };
@@ -55,7 +57,7 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
 
   const quantityOf = (row: Row): number => {
     const ingredient = lookup(row.ingredientId);
-    if (!ingredient) return 0;
+    if (!ingredient) return row.keepQuantity ?? 0;
     const amount = parseNumber(row.text);
     if (!Number.isFinite(amount) || amount <= 0) return 0;
     const option = inputUnitsFor(ingredient.unit).find((candidate) => candidate.label === row.inputUnit) ?? inputUnitsFor(ingredient.unit)[0];
@@ -66,7 +68,8 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
   const signature = JSON.stringify(complete);
   if (baselineRef.current === null) baselineRef.current = signature;
   latestRef.current = { complete, signature };
-  const incompleteCount = rows.length - complete.length;
+  const removedCount = rows.filter((row) => !lookup(row.ingredientId)).length;
+  const incompleteCount = rows.filter((row) => lookup(row.ingredientId) && quantityOf(row) <= 0).length;
 
   // Se a ficha chegar do Firebase depois de aberta (ainda sem mexer em nada), mostra ela em vez de uma tabela vazia.
   const recipeSignature = JSON.stringify(recipe);
@@ -236,7 +239,8 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
                 {createError && <p className="mt-1 text-[11px] font-semibold text-red-600">{createError}</p>}
               </div>
 
-      {incompleteCount > 0 && <p className="mt-2 rounded bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-800">{incompleteCount === 1 ? "1 linha ainda não vale" : `${incompleteCount} linhas ainda não valem`} (falta a quantidade ou o ingrediente foi removido) — só as linhas completas são salvas.</p>}
+      {incompleteCount > 0 && <p className="mt-2 rounded bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-800">{incompleteCount === 1 ? "1 linha ainda não vale" : `${incompleteCount} linhas ainda não valem`} (falta a quantidade) — só as linhas com quantidade são salvas.</p>}
+      {removedCount > 0 && <p className="mt-2 rounded bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700">{removedCount === 1 ? "1 linha tem" : `${removedCount} linhas têm`} ingrediente removido. Ela continua na ficha como estava, e o custo do prato fica incompleto até você adicionar outro ingrediente no lugar e tirar essa linha (✕).</p>}
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-200 pt-2 text-[12px]">
         <span>Custo desta ficha: <strong className="tabular-nums">{formatMoney(totalCost)}</strong>{missingCostNames.length > 0 && <span className="text-amber-700"> (parcial: falta registrar a compra de {missingCostNames.join(", ")})</span>}</span>
