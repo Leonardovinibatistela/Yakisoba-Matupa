@@ -829,7 +829,7 @@ function Dashboard({ user }: { user: User }) {
         {activeTab === "estoque" && (
           <div className="space-y-8">
             <IngredientsPanel ingredients={ingredients} ingredientPurchases={ingredientPurchases} recipes={recipes} onRenameIngredient={renameIngredient} onAddIngredient={addIngredient} onRegisterPurchase={registerPurchase} onAdjustStock={adjustStock} onSetMinStock={setMinStock} onSetCategory={setIngredientCategory} onDeleteIngredient={deleteIngredient} onEditPurchase={editPurchase} onDeletePurchase={deletePurchase} />
-            <ShoppingList ingredients={ingredients} />
+            <ShoppingList ingredients={ingredients} onRegisterPurchase={registerPurchase} />
           </div>
         )}
 

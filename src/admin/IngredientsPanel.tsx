@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { isPurchasePriceUnusual, type Ingredient, type IngredientPurchase, type IngredientUnit } from "./ingredients";
 import type { Recipes } from "./recipes";
+import { SAVE_FAILED, UNIT_LABELS, escapeHtml, formatMoney, formatNumber, formatUnitCost, normalize, parseNumber, toDraft, withTimeout } from "./stockFormat";
 
-const UNIT_LABELS: Record<IngredientUnit, string> = { kg: "kg", g: "g", l: "litros", ml: "ml", un: "unidades" };
 const UNIT_OPTIONS: { value: IngredientUnit; label: string }[] = [
   { value: "kg", label: "kg (quilo)" },
   { value: "g", label: "g (grama)" },
@@ -18,18 +18,7 @@ function statusOf(ingredient: Ingredient): Status | null {
   return null;
 }
 
-const parseNumber = (raw: string): number => Number(raw.trim().replace(",", "."));
-const formatNumber = (value: number): string => value.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
-const toDraft = (value: number): string => String(Math.round(value * 1000) / 1000).replace(".", ",");
-const formatMoney = (value: number): string => `R$ ${value.toFixed(2).replace(".", ",")}`;
-// Custo por grama/ml é centavos (ex.: R$ 0,0325) — com 2 casas arredondaria pra R$ 0,03 e esconderia a diferença.
-const formatUnitCost = (value: number): string => `R$ ${value.toFixed(value >= 1 ? 2 : value >= 0.1 ? 3 : 4).replace(".", ",")}`;
-const normalize = (value: string): string => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const escapeHtml = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Se o Firebase demorar demais (internet ruim), a célula avisa em vez de ficar esperando pra sempre.
-const withTimeout = <T,>(promise: Promise<T>, ms = 15000): Promise<T> => Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
-const SAVE_FAILED = "Não salvou — confere a internet e tenta de novo.";
 
 /**
  * Célula editável estilo planilha: clica (ou Enter) pra editar, Enter ou
