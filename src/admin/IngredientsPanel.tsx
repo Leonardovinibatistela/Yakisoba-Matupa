@@ -65,7 +65,7 @@ function EditableCell({ text, display, align = "left", numeric = false, placehol
   const alignClass = align === "right" ? "text-right" : "text-left";
   if (!editing) {
     return (
-      <div tabIndex={0} role="button" onClick={start} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); start(); } }} className={`min-h-[34px] cursor-cell px-2 py-[7px] outline-none transition-colors hover:bg-sky-100 focus:ring-2 focus:ring-inset focus:ring-sky-400 ${alignClass} ${flash ? "bg-emerald-200" : ""}`}>
+      <div tabIndex={0} role="button" onClick={start} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") { event.preventDefault(); start(); } }} className={`min-h-[44px] cursor-cell px-2 py-[12px] outline-none transition-colors md:min-h-[34px] md:py-[7px] hover:bg-sky-100 focus:ring-2 focus:ring-inset focus:ring-sky-400 ${alignClass} ${flash ? "bg-emerald-200" : ""}`}>
         {display ?? (text || <span className="text-slate-300">{placeholder}</span>)}
       </div>
     );
@@ -74,7 +74,7 @@ function EditableCell({ text, display, align = "left", numeric = false, placehol
     <div>
       <input autoFocus type="text" inputMode={numeric ? "decimal" : undefined} list={listId} value={draft} onChange={(event) => setDraft(event.target.value)} onFocus={(event) => event.currentTarget.select()} onBlur={commit}
         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } else if (event.key === "Escape") { cancel(); } }}
-        className={`min-h-[34px] w-full border-2 px-2 py-1 text-[13px] text-slate-900 outline-none ${alignClass} ${error ? "border-red-500 bg-red-50" : "border-sky-500 bg-white"}`} />
+        className={`min-h-[44px] w-full border-2 px-2 py-1 text-[16px] text-slate-900 outline-none md:min-h-[34px] md:text-[13px] ${alignClass} ${error ? "border-red-500 bg-red-50" : "border-sky-500 bg-white"}`} />
       {error && <div className="px-2 pb-1 text-[10px] font-semibold leading-tight text-red-600">{error}</div>}
     </div>
   );
@@ -144,6 +144,20 @@ const HEADERS: { key: SortKey; label: string; align: "left" | "right"; hint?: st
   { key: "status", label: "Situação", align: "left" },
 ];
 
+// Celular (menos de 768px) mostra cartões em vez da tabela larga.
+function useIsMobile(): boolean {
+  const query = "(max-width: 767px)";
+  const [matches, setMatches] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return matches;
+}
+
 export default function IngredientsPanel({ ingredients, ingredientPurchases, recipes, onAddIngredient, onRenameIngredient, onRegisterPurchase, onAdjustStock, onSetMinStock, onSetCategory, onDeleteIngredient, onEditPurchase, onDeletePurchase }: { ingredients: Ingredient[]; ingredientPurchases: IngredientPurchase[]; recipes: Recipes; onAddIngredient: (name: string, unit: IngredientUnit, category: string | null) => Promise<string>; onRenameIngredient: (ingredientId: string, name: string) => Promise<void>; onRegisterPurchase: (ingredientId: string, quantity: number, totalCost: number) => Promise<void>; onAdjustStock: (ingredientId: string, newStock: number) => Promise<void>; onSetMinStock: (ingredientId: string, minStock: number | null) => Promise<void>; onSetCategory: (ingredientId: string, category: string | null) => Promise<void>; onDeleteIngredient: (ingredientId: string) => Promise<void>; onEditPurchase: (purchase: IngredientPurchase, newQuantity: number, newTotalCost: number) => Promise<void>; onDeletePurchase: (purchase: IngredientPurchase) => Promise<void> }) {
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("");
@@ -156,9 +170,23 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
   const [deletingIngredientId, setDeletingIngredientId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
+  const [fullscreen, setFullscreen] = useState(false);
+  const isMobile = useIsMobile();
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current); }, []);
+
+  // Tela cheia = a tabela cobre a janela toda (funciona também no celular). Esc sai, a não ser que esteja digitando numa célula.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLSelectElement)) setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; window.removeEventListener("keydown", onKeyDown); };
+  }, [fullscreen]);
 
   const showFlash = (message: string) => {
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
@@ -250,124 +278,204 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
   const lowStockCount = ingredients.filter((ingredient) => ingredient.stock > 0 && ingredient.minStock !== null && ingredient.stock < ingredient.minStock).length;
   const cellClass = "border border-slate-300 p-0";
   const newRowInputClass = "w-full min-h-[34px] bg-transparent px-2 py-1.5 text-[13px] text-slate-900 outline-none placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-sky-500";
+  const mobileInputClass = "w-full min-h-[44px] rounded border border-slate-300 bg-white px-3 py-2 text-[16px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-500";
+
+  const statusBadge = (status: Status | null) => (status ? <span className={`rounded px-2 py-0.5 text-[11px] font-bold ${status.badge}`}>{status.label}</span> : <span className="text-[11px] font-semibold text-emerald-700">OK</span>);
+  const costLabel = (ingredient: Ingredient) => (ingredient.avgCost > 0 ? `${formatUnitCost(ingredient.avgCost)} /${ingredient.unit}` : <span className="text-slate-300" title="Ainda sem compra registrada">sem compra</span>);
+  const stockCell = (ingredient: Ingredient, align: "left" | "right") => <EditableCell numeric align={align} text={toDraft(ingredient.stock)} display={<>{formatNumber(ingredient.stock)} <span className="text-[11px] text-slate-400">{UNIT_LABELS[ingredient.unit]}</span></>} onCommit={(raw) => saveStock(ingredient, raw)} />;
+  const minCell = (ingredient: Ingredient, align: "left" | "right") => <EditableCell numeric align={align} placeholder="sem mínimo" text={ingredient.minStock !== null ? toDraft(ingredient.minStock) : ""} display={ingredient.minStock !== null ? <>{formatNumber(ingredient.minStock)} <span className="text-[11px] text-slate-400">{UNIT_LABELS[ingredient.unit]}</span></> : undefined} onCommit={(raw) => saveMinStock(ingredient, raw)} />;
+  const deleteButton = (ingredient: Ingredient, className: string) => <button type="button" onClick={() => handleDeleteIngredient(ingredient)} disabled={deletingIngredientId === ingredient.id} title="Apagar ingrediente" aria-label={`Apagar ${ingredient.name}`} className={`rounded text-[15px] text-red-500 hover:bg-red-50 disabled:opacity-40 ${className}`}>🗑</button>;
+  const purchaseButton = (ingredient: Ingredient, history: IngredientPurchase[], className: string) => {
+    const isOpen = purchaseOpenId === ingredient.id;
+    return <button type="button" onClick={() => setPurchaseOpenId(isOpen ? null : ingredient.id)} aria-expanded={isOpen} className={`rounded border text-[12px] font-bold ${isOpen ? "border-sky-600 bg-sky-600 text-white" : "border-sky-600 text-sky-700 hover:bg-sky-50"} ${className}`}>＋ Compra{history.length > 0 ? ` (${history.length})` : ""}</button>;
+  };
+
+  const renderPurchasePanel = (ingredient: Ingredient, history: IngredientPurchase[]) => {
+    const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
+    const draftQuantity = parseNumber(draft.quantity);
+    const draftTotal = parseNumber(draft.totalCost);
+    const inputClass = "mt-1 w-full min-h-[44px] rounded border border-slate-300 bg-white px-2 py-1.5 text-[16px] text-slate-900 outline-none focus:border-sky-500 md:min-h-0 md:w-28 md:text-[13px]";
+    return (
+      <>
+        <p className="text-xs font-bold text-slate-700">Registrar compra de {ingredient.name}</p>
+        <div className="mt-2 grid grid-cols-2 items-end gap-3 md:flex md:flex-wrap">
+          <div>
+            <label htmlFor={`buy-qty-${ingredient.id}`} className="block text-[11px] font-bold uppercase text-slate-500">Comprei ({UNIT_LABELS[ingredient.unit]})</label>
+            <input id={`buy-qty-${ingredient.id}`} type="text" inputMode="decimal" value={draft.quantity} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, quantity: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter") handleSavePurchase(ingredient); }} placeholder="ex: 5" className={inputClass} />
+          </div>
+          <div>
+            <label htmlFor={`buy-total-${ingredient.id}`} className="block text-[11px] font-bold uppercase text-slate-500">Paguei no total (R$)</label>
+            <input id={`buy-total-${ingredient.id}`} type="text" inputMode="decimal" value={draft.totalCost} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, totalCost: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter") handleSavePurchase(ingredient); }} placeholder="ex: 250,00" className={inputClass} />
+          </div>
+          <button type="button" onClick={() => handleSavePurchase(ingredient)} disabled={savingPurchaseId === ingredient.id} className="col-span-2 min-h-[44px] rounded bg-sky-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-wait disabled:opacity-60 md:col-auto md:min-h-0 md:text-xs">{savingPurchaseId === ingredient.id ? "Salvando…" : "Registrar compra"}</button>
+          {draftQuantity > 0 && draftTotal > 0 && <span className="col-span-2 text-xs text-slate-600 md:col-auto md:pb-2">= {formatUnitCost(draftTotal / draftQuantity)} por {ingredient.unit}</span>}
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500">Lança na mesma unidade da nota fiscal — caixa com 50 unidades, lança 50 (não 1 pelo preço da caixa).</p>
+        {history.length > 0 && (
+          <div className="mt-3">
+            <p className="text-[11px] font-bold uppercase text-slate-500">Compras anteriores</p>
+            <div className="mt-1 max-h-44 divide-y divide-slate-200 overflow-auto rounded border border-slate-200 bg-white px-3">
+              {history.map((purchase) => <PurchaseHistoryRow key={purchase.id} purchase={purchase} unit={ingredient.unit} onEdit={(newQuantity, newTotalCost) => onEditPurchase(purchase, newQuantity, newTotalCost)} onDelete={() => onDeletePurchase(purchase)} />)}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  const emptyMessage = ingredients.length === 0 ? "Nenhum ingrediente ainda. Digita o nome no quadro azul e clica em ＋ Adicionar." : visibleIngredients.length === 0 ? `Nenhum ingrediente encontrado pra "${searchQuery.trim()}".` : null;
+
+  const mobileCards = (
+    <div className="space-y-2">
+      <div className="space-y-2 rounded-md border border-slate-300 bg-sky-50 p-3">
+        <p className="text-[11px] font-bold uppercase text-slate-500">＋ Novo ingrediente</p>
+        <input type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Nome (ex: Coca-Cola 300 ml)" aria-label="Nome do novo ingrediente" className={mobileInputClass} />
+        <input type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Categoria (opcional)" aria-label="Categoria do novo ingrediente" className={mobileInputClass} />
+        <div className="flex items-center gap-2">
+          <label htmlFor="new-ingredient-unit-m" className="text-[11px] font-bold uppercase text-slate-500">Medido em</label>
+          <select id="new-ingredient-unit-m" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="min-h-[44px] flex-1 rounded border border-slate-300 bg-white px-2 text-[16px] text-slate-900 outline-none focus:border-sky-500">
+            {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="min-h-[44px] w-full rounded bg-sky-600 px-3 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar"}</button>
+        {addError && <p className="text-xs font-semibold text-red-700">{addError}</p>}
+      </div>
+      {emptyMessage && <p className="rounded-md border border-slate-300 bg-white px-3 py-6 text-center text-sm text-slate-500">{emptyMessage}</p>}
+      {visibleIngredients.map((ingredient) => {
+        const status = statusOf(ingredient);
+        const isOpen = purchaseOpenId === ingredient.id;
+        const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
+        const label = "px-2 pt-1 text-[10px] font-bold uppercase text-slate-500";
+        return (
+          <div key={ingredient.id} className={`overflow-hidden rounded-md border border-slate-300 text-[14px] text-slate-800 ${status?.row ?? "bg-white"}`}>
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200">
+              <div className="min-w-0 flex-1 font-bold"><EditableCell text={ingredient.name} onCommit={(raw) => saveName(ingredient, raw)} /></div>
+              <div className="shrink-0 pr-2">{statusBadge(status)}</div>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-slate-200 border-b border-slate-200">
+              <div><p className={label}>Estoque</p>{stockCell(ingredient, "left")}</div>
+              <div><p className={label}>Mínimo</p>{minCell(ingredient, "left")}</div>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-slate-200 border-b border-slate-200">
+              <div><p className={label}>Categoria</p><EditableCell text={ingredient.category ?? ""} listId="ingredient-categories" onCommit={(raw) => saveCategory(ingredient, raw)} /></div>
+              <div><p className={label}>Custo médio</p><div className="px-2 py-[10px] tabular-nums text-slate-700">{costLabel(ingredient)}</div></div>
+            </div>
+            <div className="flex items-center gap-2 p-2">
+              {purchaseButton(ingredient, history, "min-h-[44px] flex-1 px-3")}
+              {deleteButton(ingredient, "min-h-[44px] min-w-[44px]")}
+            </div>
+            {isOpen && <div className="border-t border-slate-300 bg-sky-50 px-3 py-3">{renderPurchasePanel(ingredient, history)}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const desktopTable = (
+    <div className={`${fullscreen ? "min-h-0 flex-1" : "max-h-[70vh]"} overflow-auto rounded-md border border-slate-300 bg-white text-[13px] text-slate-800 shadow-sm`}>
+      <table className="w-full min-w-[820px] table-fixed border-collapse">
+        <colgroup><col style={{ width: "24%" }} /><col style={{ width: "15%" }} /><col style={{ width: "13%" }} /><col style={{ width: "14%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /></colgroup>
+        <thead className="sticky top-0 z-10">
+          <tr>
+            {HEADERS.map((header) => (
+              <th key={header.key} title={header.hint} onClick={() => toggleSort(header.key)} className={`cursor-pointer select-none border border-slate-300 bg-slate-100 px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-200 ${header.align === "right" ? "text-right" : "text-left"}`}>
+                {header.label} <span className="text-slate-400">{sort.key === header.key ? (sort.dir === 1 ? "▲" : "▼") : ""}</span>
+              </th>
+            ))}
+            <th className="border border-slate-300 bg-slate-100 px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="bg-sky-50">
+            <td className={cellClass}><input type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="＋ Novo ingrediente (ex: Coca-Cola 300 ml)" aria-label="Nome do novo ingrediente" className={newRowInputClass} /></td>
+            <td className={cellClass}><input type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Categoria (opcional)" aria-label="Categoria do novo ingrediente" className={newRowInputClass} /></td>
+            <td className={cellClass} colSpan={4}>
+              <div className="flex flex-wrap items-center gap-2 px-2 py-1">
+                <label htmlFor="new-ingredient-unit" className="text-[11px] font-bold uppercase text-slate-500">Medido em</label>
+                <select id="new-ingredient-unit" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="rounded border border-slate-300 bg-white px-2 py-1 text-[13px] text-slate-900 outline-none focus:border-sky-500">
+                  {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <span className="text-[11px] text-slate-500">Depois de adicionar, preenche o estoque e o mínimo direto na linha dele.</span>
+              </div>
+            </td>
+            <td className={`${cellClass} px-1.5`}>
+              <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="w-full rounded bg-sky-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar"}</button>
+            </td>
+          </tr>
+          {addError && <tr><td colSpan={7} className="border border-slate-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">{addError}</td></tr>}
+          {emptyMessage && <tr><td colSpan={7} className="border border-slate-300 px-3 py-6 text-center text-slate-500">{emptyMessage}</td></tr>}
+
+          {visibleIngredients.map((ingredient) => {
+            const status = statusOf(ingredient);
+            const isOpen = purchaseOpenId === ingredient.id;
+            const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
+            return (
+              <Fragment key={ingredient.id}>
+                <tr className={status?.row ?? ""}>
+                  <td className={`${cellClass} font-semibold`}><EditableCell text={ingredient.name} onCommit={(raw) => saveName(ingredient, raw)} /></td>
+                  <td className={cellClass}><EditableCell text={ingredient.category ?? ""} listId="ingredient-categories" onCommit={(raw) => saveCategory(ingredient, raw)} /></td>
+                  <td className={cellClass}>{stockCell(ingredient, "right")}</td>
+                  <td className={`${cellClass} px-2 text-right tabular-nums text-slate-600`}>{costLabel(ingredient)}</td>
+                  <td className={cellClass}>{minCell(ingredient, "right")}</td>
+                  <td className={`${cellClass} px-2`}>{statusBadge(status)}</td>
+                  <td className={`${cellClass} whitespace-nowrap px-1.5 py-1`}>
+                    {purchaseButton(ingredient, history, "px-2 py-1")}
+                    {deleteButton(ingredient, "ml-1 px-1.5 py-1")}
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr>
+                    <td colSpan={7} className="border border-slate-300 bg-sky-50 px-4 py-3">{renderPurchasePanel(ingredient, history)}</td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const toolbarButton = "min-h-[40px] rounded-full border border-white/15 px-3.5 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 md:min-h-0";
 
   return (
-    <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
-      <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
-      <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Tabela do estoque</h2>
-      <p className="mt-1.5 text-sm text-white/55">Funciona igual planilha: <strong className="text-white/80">clica numa célula pra editar</strong> — Enter salva, Esc cancela, e aparece um aviso verde quando salvou. Comprou ingrediente? Usa o botão <strong className="text-white/80">＋ Compra</strong> da linha (ele soma no estoque e atualiza o custo médio sozinho).</p>
+    <div className={fullscreen ? "fixed inset-0 z-[60] flex flex-col overflow-hidden bg-[#171211] p-3 sm:p-5" : "mt-10 rounded-2xl border border-white/10 bg-[#171211] p-4 sm:p-6"}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">🧂 Ingredientes e Estoque</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Tabela do estoque</h2>
+        </div>
+        {fullscreen && <button type="button" onClick={() => setFullscreen(false)} className={`shrink-0 ${toolbarButton}`}>✕ Sair da tela cheia</button>}
+      </div>
+      {!fullscreen && <p className="mt-1.5 text-sm text-white/55">Funciona igual planilha: <strong className="text-white/80">{isMobile ? "toca numa célula" : "clica numa célula"} pra editar</strong> — {isMobile ? "confirma no teclado" : "Enter salva, Esc cancela"}, e aparece um aviso verde quando salvou. Comprou ingrediente? Usa o botão <strong className="text-white/80">＋ Compra</strong> (ele soma no estoque e atualiza o custo médio sozinho).</p>}
 
       {(outOfStockCount > 0 || lowStockCount > 0) && (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {outOfStockCount > 0 && <span className="rounded-full bg-red-500/15 px-3 py-1.5 text-xs font-bold text-red-400">🔴 {outOfStockCount} ingrediente{outOfStockCount === 1 ? "" : "s"} esgotado{outOfStockCount === 1 ? "" : "s"}</span>}
           {lowStockCount > 0 && <span className="rounded-full bg-amber-400/15 px-3 py-1.5 text-xs font-bold text-amber-300">🟡 {lowStockCount} esgotando</span>}
         </div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-end gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="mt-4 flex flex-wrap items-end gap-2">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <label htmlFor="ingredient-search" className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Buscar</label>
-          <input id="ingredient-search" type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Nome ou categoria, ex: salmão, carnes…" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]" />
+          <input id="ingredient-search" type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Nome ou categoria, ex: salmão, carnes…" className="mt-1.5 min-h-[44px] w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-[16px] text-white outline-none focus:border-[#ff6b32] sm:min-h-0 sm:text-sm" />
         </div>
-        <button type="button" onClick={() => exportToExcel(visibleIngredients)} disabled={visibleIngredients.length === 0} className="rounded-full border border-white/15 px-3.5 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">📊 Exportar Excel</button>
-        <button type="button" onClick={() => printTable(visibleIngredients)} disabled={visibleIngredients.length === 0} className="rounded-full border border-white/15 px-3.5 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">🖨️ Imprimir</button>
+        {isMobile && (
+          <select aria-label="Ordenar por" value={sort.key} onChange={(event) => setSort({ key: event.target.value as SortKey, dir: 1 })} className="min-h-[40px] rounded-full border border-white/15 bg-[#171211] px-3 text-xs font-bold text-white/70 outline-none">
+            {HEADERS.map((header) => <option key={header.key} value={header.key}>Ordenar: {header.label}</option>)}
+          </select>
+        )}
+        {!fullscreen && <button type="button" onClick={() => setFullscreen(true)} className={toolbarButton}>⛶ Tela cheia</button>}
+        <button type="button" onClick={() => exportToExcel(visibleIngredients)} disabled={visibleIngredients.length === 0} className={toolbarButton}>📊 Exportar Excel</button>
+        <button type="button" onClick={() => printTable(visibleIngredients)} disabled={visibleIngredients.length === 0} className={toolbarButton}>🖨️ Imprimir</button>
       </div>
 
       <datalist id="ingredient-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
 
-      <div className="mt-4 max-h-[70vh] overflow-auto rounded-md border border-slate-300 bg-white text-[13px] text-slate-800 shadow-sm">
-        <table className="w-full min-w-[820px] table-fixed border-collapse">
-          <colgroup><col style={{ width: "24%" }} /><col style={{ width: "15%" }} /><col style={{ width: "13%" }} /><col style={{ width: "14%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /></colgroup>
-          <thead className="sticky top-0 z-10">
-            <tr>
-              {HEADERS.map((header) => (
-                <th key={header.key} title={header.hint} onClick={() => toggleSort(header.key)} className={`cursor-pointer select-none border border-slate-300 bg-slate-100 px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-200 ${header.align === "right" ? "text-right" : "text-left"}`}>
-                  {header.label} <span className="text-slate-400">{sort.key === header.key ? (sort.dir === 1 ? "▲" : "▼") : ""}</span>
-                </th>
-              ))}
-              <th className="border border-slate-300 bg-slate-100 px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="bg-sky-50">
-              <td className={cellClass}><input type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="＋ Novo ingrediente (ex: Coca-Cola 300 ml)" aria-label="Nome do novo ingrediente" className={newRowInputClass} /></td>
-              <td className={cellClass}><input type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Categoria (opcional)" aria-label="Categoria do novo ingrediente" className={newRowInputClass} /></td>
-              <td className={cellClass} colSpan={4}>
-                <div className="flex flex-wrap items-center gap-2 px-2 py-1">
-                  <label htmlFor="new-ingredient-unit" className="text-[11px] font-bold uppercase text-slate-500">Medido em</label>
-                  <select id="new-ingredient-unit" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="rounded border border-slate-300 bg-white px-2 py-1 text-[13px] text-slate-900 outline-none focus:border-sky-500">
-                    {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                  <span className="text-[11px] text-slate-500">Depois de adicionar, preenche o estoque e o mínimo direto na linha dele.</span>
-                </div>
-              </td>
-              <td className={`${cellClass} px-1.5`}>
-                <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="w-full rounded bg-sky-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar"}</button>
-              </td>
-            </tr>
-            {addError && <tr><td colSpan={7} className="border border-slate-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">{addError}</td></tr>}
+      <div className={`mt-4 ${fullscreen ? "flex min-h-0 flex-1 flex-col overflow-auto" : ""}`}>{isMobile ? mobileCards : desktopTable}</div>
 
-            {ingredients.length === 0 && <tr><td colSpan={7} className="border border-slate-300 px-3 py-6 text-center text-slate-500">Nenhum ingrediente ainda. Digita o nome na linha azul acima e clica em ＋ Adicionar.</td></tr>}
-            {ingredients.length > 0 && visibleIngredients.length === 0 && <tr><td colSpan={7} className="border border-slate-300 px-3 py-6 text-center text-slate-500">Nenhum ingrediente encontrado pra "{searchQuery.trim()}".</td></tr>}
-
-            {visibleIngredients.map((ingredient) => {
-              const status = statusOf(ingredient);
-              const isOpen = purchaseOpenId === ingredient.id;
-              const draft = purchaseDrafts[ingredient.id] ?? { quantity: "", totalCost: "" };
-              const draftQuantity = parseNumber(draft.quantity);
-              const draftTotal = parseNumber(draft.totalCost);
-              const history = ingredientPurchases.filter((purchase) => purchase.ingredientId === ingredient.id);
-              const purchaseInputClass = "w-28 rounded border border-slate-300 bg-white px-2 py-1.5 text-[13px] text-slate-900 outline-none focus:border-sky-500";
-              return (
-                <Fragment key={ingredient.id}>
-                  <tr className={status?.row ?? ""}>
-                    <td className={`${cellClass} font-semibold`}><EditableCell text={ingredient.name} onCommit={(raw) => saveName(ingredient, raw)} /></td>
-                    <td className={cellClass}><EditableCell text={ingredient.category ?? ""} listId="ingredient-categories" onCommit={(raw) => saveCategory(ingredient, raw)} /></td>
-                    <td className={cellClass}><EditableCell numeric align="right" text={toDraft(ingredient.stock)} display={<>{formatNumber(ingredient.stock)} <span className="text-[11px] text-slate-400">{UNIT_LABELS[ingredient.unit]}</span></>} onCommit={(raw) => saveStock(ingredient, raw)} /></td>
-                    <td className={`${cellClass} px-2 text-right tabular-nums text-slate-600`}>{ingredient.avgCost > 0 ? `${formatUnitCost(ingredient.avgCost)} /${ingredient.unit}` : <span className="text-slate-300" title="Ainda sem compra registrada">sem compra</span>}</td>
-                    <td className={cellClass}><EditableCell numeric align="right" placeholder="sem mínimo" text={ingredient.minStock !== null ? toDraft(ingredient.minStock) : ""} display={ingredient.minStock !== null ? <>{formatNumber(ingredient.minStock)} <span className="text-[11px] text-slate-400">{UNIT_LABELS[ingredient.unit]}</span></> : undefined} onCommit={(raw) => saveMinStock(ingredient, raw)} /></td>
-                    <td className={`${cellClass} px-2`}>{status ? <span className={`rounded px-2 py-0.5 text-[11px] font-bold ${status.badge}`}>{status.label}</span> : <span className="text-[11px] font-semibold text-emerald-700">OK</span>}</td>
-                    <td className={`${cellClass} whitespace-nowrap px-1.5 py-1`}>
-                      <button type="button" onClick={() => setPurchaseOpenId(isOpen ? null : ingredient.id)} className={`rounded border px-2 py-1 text-[11px] font-bold ${isOpen ? "border-sky-600 bg-sky-600 text-white" : "border-sky-600 text-sky-700 hover:bg-sky-50"}`}>＋ Compra{history.length > 0 ? ` (${history.length})` : ""}</button>
-                      <button type="button" onClick={() => handleDeleteIngredient(ingredient)} disabled={deletingIngredientId === ingredient.id} title="Apagar ingrediente" aria-label={`Apagar ${ingredient.name}`} className="ml-1 rounded px-1.5 py-1 text-[13px] text-red-500 hover:bg-red-50 disabled:opacity-40">🗑</button>
-                    </td>
-                  </tr>
-                  {isOpen && (
-                    <tr>
-                      <td colSpan={7} className="border border-slate-300 bg-sky-50 px-4 py-3">
-                        <p className="text-xs font-bold text-slate-700">Registrar compra de {ingredient.name}</p>
-                        <div className="mt-2 flex flex-wrap items-end gap-3">
-                          <div>
-                            <label htmlFor={`buy-qty-${ingredient.id}`} className="block text-[11px] font-bold uppercase text-slate-500">Comprei ({UNIT_LABELS[ingredient.unit]})</label>
-                            <input id={`buy-qty-${ingredient.id}`} type="text" inputMode="decimal" value={draft.quantity} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, quantity: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter") handleSavePurchase(ingredient); }} placeholder="ex: 5" className={`mt-1 ${purchaseInputClass}`} />
-                          </div>
-                          <div>
-                            <label htmlFor={`buy-total-${ingredient.id}`} className="block text-[11px] font-bold uppercase text-slate-500">Paguei no total (R$)</label>
-                            <input id={`buy-total-${ingredient.id}`} type="text" inputMode="decimal" value={draft.totalCost} onChange={(event) => setPurchaseDrafts((current) => ({ ...current, [ingredient.id]: { ...draft, totalCost: event.target.value } }))} onKeyDown={(event) => { if (event.key === "Enter") handleSavePurchase(ingredient); }} placeholder="ex: 250,00" className={`mt-1 ${purchaseInputClass}`} />
-                          </div>
-                          <button type="button" onClick={() => handleSavePurchase(ingredient)} disabled={savingPurchaseId === ingredient.id} className="rounded bg-sky-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-sky-700 disabled:cursor-wait disabled:opacity-60">{savingPurchaseId === ingredient.id ? "Salvando…" : "Registrar compra"}</button>
-                          {draftQuantity > 0 && draftTotal > 0 && <span className="pb-2 text-xs text-slate-600">= {formatUnitCost(draftTotal / draftQuantity)} por {ingredient.unit}</span>}
-                        </div>
-                        <p className="mt-2 text-[11px] text-slate-500">Lança na mesma unidade da nota fiscal — caixa com 50 unidades, lança 50 (não 1 pelo preço da caixa).</p>
-                        {history.length > 0 && (
-                          <div className="mt-3">
-                            <p className="text-[11px] font-bold uppercase text-slate-500">Compras anteriores</p>
-                            <div className="mt-1 max-h-44 divide-y divide-slate-200 overflow-auto rounded border border-slate-200 bg-white px-3">
-                              {history.map((purchase) => <PurchaseHistoryRow key={purchase.id} purchase={purchase} unit={ingredient.unit} onEdit={(newQuantity, newTotalCost) => onEditPurchase(purchase, newQuantity, newTotalCost)} onDelete={() => onDeletePurchase(purchase)} />)}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {flashMessage && <div role="status" className="fixed bottom-5 right-5 z-50 max-w-[90vw] rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20">✓ {flashMessage}</div>}
+      {flashMessage && <div role="status" className="fixed bottom-5 right-5 z-[70] max-w-[90vw] rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20">✓ {flashMessage}</div>}
     </div>
   );
 }

@@ -158,8 +158,7 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
   const margin = price > 0 && totalCost > 0 ? ((price - totalCost) / price) * 100 : null;
 
   const statusText = status === "saving" || status === "pending" ? "Salvando…" : status === "saved" ? "✓ Salvo" : status === "error" ? "⚠ Não salvou" : complete.length > 0 ? "✓ Salvo" : "";
-  const cellClass = "border border-slate-300 px-2 py-1.5";
-  const inputClass = "min-h-[32px] rounded border border-slate-300 bg-white px-2 py-1 text-[13px] text-slate-900 outline-none focus:border-sky-500";
+  const inputClass = "min-h-[44px] rounded border border-slate-300 bg-white px-2 py-1 text-[16px] text-slate-900 outline-none focus:border-sky-500 sm:min-h-[32px] sm:text-[13px]";
 
   return (
     <div className="mt-2 rounded-lg border border-slate-300 bg-white p-3 text-[13px] text-slate-800 shadow-sm">
@@ -172,57 +171,53 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
       </div>
       <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Quanto de cada ingrediente vai em <strong>uma</strong> unidade deste item. Salva sozinho. Use a quantidade <strong>bruta</strong> (antes de limpar): se 1 kg de cebola rende 850 g limpa e o prato usa 100 g limpa, lance ~118 g.</p>
 
-      <div className="mt-2 overflow-x-auto">
-        <table className="w-full min-w-[520px] table-fixed border-collapse">
-          <colgroup><col style={{ width: "38%" }} /><col style={{ width: "30%" }} /><col style={{ width: "24%" }} /><col style={{ width: "8%" }} /></colgroup>
-          <thead>
-            <tr className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">
-              <th className={cellClass}>Ingrediente</th><th className={cellClass}>Quantidade</th><th className={`${cellClass} text-right`}>Custo</th><th className={cellClass}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const ingredient = lookup(row.ingredientId);
-              const options = ingredient ? inputUnitsFor(ingredient.unit) : [];
-              const quantity = quantityOf(row);
-              const cost = ingredient ? quantity * ingredient.avgCost : 0;
-              const needsQuantity = ingredient !== undefined && quantity <= 0;
-              return (
-                <tr key={row.key} className={!ingredient ? "bg-red-50" : needsQuantity ? "bg-amber-50" : ""}>
-                  <td className={`${cellClass} font-semibold`}>
-                    {ingredient ? ingredient.name : <span className="text-red-700">Ingrediente removido — remova esta linha ou adicione outro</span>}
-                  </td>
-                  <td className={cellClass}>
-                    {ingredient && (
-                      <div className="flex items-center gap-1.5">
-                        <input type="text" inputMode="decimal" autoFocus={row.key === justAddedKey} value={row.text} onChange={(event) => updateRow(row.key, { text: event.target.value })} placeholder="quanto?" aria-label={`Quantidade de ${ingredient.name}`} className={`w-24 text-right ${inputClass} ${needsQuantity ? "border-amber-500" : ""}`} />
-                        {options.length > 1 ? (
-                          <select value={row.inputUnit} onChange={(event) => updateRow(row.key, { inputUnit: event.target.value })} aria-label={`Unidade de ${ingredient.name}`} className={inputClass}>
-                            {options.map((option) => <option key={option.label} value={option.label}>{option.label}</option>)}
-                          </select>
-                        ) : <span className="text-slate-500">{options[0]?.label}</span>}
-                      </div>
-                    )}
-                  </td>
-                  <td className={`${cellClass} text-right tabular-nums`}>
-                    {!ingredient || quantity <= 0 ? <span className="text-amber-700">{needsQuantity ? "falta a quantidade" : ""}</span>
-                      : ingredient.avgCost > 0 ? formatMoney(cost) : <span className="text-amber-700" title="Registre a compra desse ingrediente na aba Estoque pra o custo aparecer">sem compra</span>}
-                  </td>
-                  <td className={`${cellClass} text-center`}><button type="button" onClick={() => removeRow(row.key)} aria-label="Remover linha" className="rounded px-1.5 py-0.5 text-sm font-bold text-red-500 hover:bg-red-50">✕</button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mt-2 border border-slate-300">
+        <div className="hidden bg-slate-100 text-[11px] font-bold uppercase tracking-wide text-slate-600 sm:flex">
+          <div className="w-[38%] px-2 py-1.5">Ingrediente</div>
+          <div className="w-[30%] border-l border-slate-300 px-2 py-1.5">Quantidade</div>
+          <div className="w-[24%] border-l border-slate-300 px-2 py-1.5 text-right">Custo</div>
+          <div className="w-[8%] border-l border-slate-300 px-2 py-1.5" />
+        </div>
+        {rows.map((row) => {
+          const ingredient = lookup(row.ingredientId);
+          const options = ingredient ? inputUnitsFor(ingredient.unit) : [];
+          const quantity = quantityOf(row);
+          const cost = ingredient ? quantity * ingredient.avgCost : 0;
+          const needsQuantity = ingredient !== undefined && quantity <= 0;
+          return (
+            <div key={row.key} className={`flex flex-wrap items-center border-t border-slate-300 first:border-t-0 sm:first:border-t ${!ingredient ? "bg-red-50" : needsQuantity ? "bg-amber-50" : ""}`}>
+              <div className="w-full px-2 pt-2 font-semibold sm:w-[38%] sm:py-1.5">
+                {ingredient ? ingredient.name : <span className="text-red-700">Ingrediente removido — remova esta linha ou adicione outro</span>}
+              </div>
+              <div className="flex flex-1 items-center gap-1.5 px-2 py-1.5 sm:w-[30%] sm:flex-none sm:self-stretch sm:border-l sm:border-slate-300">
+                {ingredient && (
+                  <>
+                    <input type="text" inputMode="decimal" autoFocus={row.key === justAddedKey} value={row.text} onChange={(event) => updateRow(row.key, { text: event.target.value })} placeholder="quanto?" aria-label={`Quantidade de ${ingredient.name}`} className={`w-24 text-right ${inputClass} ${needsQuantity ? "border-amber-500" : ""}`} />
+                    {options.length > 1 ? (
+                      <select value={row.inputUnit} onChange={(event) => updateRow(row.key, { inputUnit: event.target.value })} aria-label={`Unidade de ${ingredient.name}`} className={inputClass}>
+                        {options.map((option) => <option key={option.label} value={option.label}>{option.label}</option>)}
+                      </select>
+                    ) : <span className="text-slate-500">{options[0]?.label}</span>}
+                  </>
+                )}
+              </div>
+              <div className="px-2 text-right tabular-nums sm:w-[24%] sm:self-stretch sm:border-l sm:border-slate-300 sm:py-1.5">
+                {!ingredient || quantity <= 0 ? <span className="text-amber-700">{needsQuantity ? "falta a quantidade" : ""}</span>
+                  : ingredient.avgCost > 0 ? formatMoney(cost) : <span className="text-amber-700" title="Registre a compra desse ingrediente na aba Estoque pra o custo aparecer">sem compra</span>}
+              </div>
+              <div className="px-1 sm:w-[8%] sm:self-stretch sm:border-l sm:border-slate-300 sm:py-1 sm:text-center"><button type="button" onClick={() => removeRow(row.key)} aria-label="Remover linha" className="min-h-[44px] min-w-[44px] rounded text-sm font-bold text-red-500 hover:bg-red-50 sm:min-h-0 sm:min-w-0 sm:px-1.5 sm:py-0.5">✕</button></div>
+            </div>
+          );
+        })}
       </div>
       <div className="border border-t-0 border-slate-300 bg-sky-50 p-2">
                 <input type="text" value={pickText} onChange={(event) => { setPickText(event.target.value); setPickerOpen(true); setCreateError(null); }} onFocus={() => setPickerOpen(true)} onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
                   onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (exactExisting && !usedIds.has(exactExisting.id)) addRowFor(exactExisting); else if (matches.length === 1) addRowFor(matches[0]); else if (matches.length === 0 && showCreate) handleCreate(); } }}
-                  placeholder="＋ Digite o nome do ingrediente (ou escolha na lista)" aria-label="Adicionar ingrediente à ficha" className={`w-full ${inputClass}`} />
+                  placeholder="＋ Digite o nome do ingrediente" aria-label="Adicionar ingrediente à ficha" className={`w-full ${inputClass}`} />
                 {pickerOpen && (matches.length > 0 || showCreate) && (
                   <div className="mt-1.5 max-h-56 overflow-auto rounded border border-slate-300 bg-white shadow-sm" onMouseDown={(event) => event.preventDefault()}>
                     {matches.map((ingredient) => (
-                      <button key={ingredient.id} type="button" onClick={() => addRowFor(ingredient)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-sky-50">
+                      <button key={ingredient.id} type="button" onClick={() => addRowFor(ingredient)} className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[14px] hover:bg-sky-50 sm:min-h-0 sm:text-[13px]">
                         <span className="font-semibold">{ingredient.name}</span><span className="text-[11px] text-slate-400">{ingredient.unit}{ingredient.category ? ` · ${ingredient.category}` : ""}</span>
                       </button>
                     ))}
@@ -233,7 +228,7 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
                         <select value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className={inputClass}>
                           {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </select>
-                        <button type="button" onClick={handleCreate} disabled={creating} className="rounded bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-60">{creating ? "Criando…" : "＋ Criar e adicionar"}</button>
+                        <button type="button" onClick={handleCreate} disabled={creating} className="min-h-[44px] rounded bg-sky-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-sky-700 disabled:opacity-60 sm:min-h-0">{creating ? "Criando…" : "＋ Criar e adicionar"}</button>
                       </div>
                     )}
                   </div>
