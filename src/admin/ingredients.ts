@@ -32,8 +32,9 @@ export function subscribeIngredients(onUpdate: (ingredients: Ingredient[]) => vo
 }
 
 /** Cadastra um ingrediente novo, sem estoque (o estoque entra depois via registerPurchase). */
-export async function addIngredient(name: string, unit: IngredientUnit, category: string | null): Promise<void> {
-  await addDoc(ingredientsCollection, { name, unit, stock: 0, avgCost: 0, category });
+export async function addIngredient(name: string, unit: IngredientUnit, category: string | null): Promise<string> {
+  const ref = await addDoc(ingredientsCollection, { name, unit, stock: 0, avgCost: 0, category });
+  return ref.id;
 }
 
 /** Corrige o nome de um ingrediente já cadastrado. Fichas técnicas e extrato continuam ligados a ele (usam o id, não o nome). */

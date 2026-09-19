@@ -935,7 +935,7 @@ function Dashboard({ user }: { user: User }) {
                             {hasAnyOverride && <button type="button" onClick={() => handleResetItemAll(item.id)} disabled={isSavingItem} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white disabled:opacity-50">Restaurar padrão</button>}
                             <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
                           </div>
-                          {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} onSave={setRecipe} />}
+                          {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1.5">
                           <button type="button" onClick={() => handleToggleSoldOut(item.id, isSoldOut)} disabled={isToggling} className={`rounded-full border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${isSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/60 hover:border-white/35 hover:text-white"}`}>
@@ -973,7 +973,7 @@ function Dashboard({ user }: { user: User }) {
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === item.id ? null : item.id)} className="text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[item.id]?.length ? "" : " (vazia)"}</button>
                         </div>
-                        {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={item.name} ingredients={ingredients} recipe={recipes[item.id] ?? []} onSave={setRecipe} />}
+                        {expandedRecipeItemId === item.id && <RecipeEditor itemId={item.id} itemName={item.name} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
                       </div>
                     </div>
                   ))}
@@ -1076,7 +1076,7 @@ function Dashboard({ user }: { user: User }) {
                         </div>
                         <p className="mt-1.5 text-[11px] text-white/40">{formatDaysLabel(combo.days)}</p>
                         <button type="button" onClick={() => setExpandedRecipeItemId(expandedRecipeItemId === combo.id ? null : combo.id)} className="mt-1.5 block text-[10px] font-bold text-white/40 underline decoration-dotted underline-offset-2 hover:text-white">🧂 Ficha técnica{recipes[combo.id]?.length ? "" : " (vazia)"}</button>
-                        {expandedRecipeItemId === combo.id && <RecipeEditor itemId={combo.id} itemName={combo.name} ingredients={ingredients} recipe={recipes[combo.id] ?? []} onSave={setRecipe} />}
+                        {expandedRecipeItemId === combo.id && <RecipeEditor itemId={combo.id} itemName={combo.name} ingredients={ingredients} recipe={recipes[combo.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} />}
                       </div>
                       <button type="button" onClick={() => handleRemoveCombo(combo)} disabled={isRemovingCombo} className="shrink-0 text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50 sm:self-start">{isRemovingCombo ? "Removendo…" : "🗑 Remover combo"}</button>
                     </div>
