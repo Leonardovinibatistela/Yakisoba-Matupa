@@ -213,12 +213,12 @@ export default function RecipeEditor({ itemId, itemName, ingredients, recipe, re
           );
         })}
       </div>
-      <div className="border border-t-0 border-slate-300 bg-sky-50 p-2">
-                <input type="text" value={pickText} onChange={(event) => { setPickText(event.target.value); setPickerOpen(true); setCreateError(null); }} onFocus={() => setPickerOpen(true)} onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+      <div className="border border-t-0 border-slate-300 bg-sky-50 p-2" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPickerOpen(false); }}>
+                <input type="text" value={pickText} onChange={(event) => { setPickText(event.target.value); setPickerOpen(true); setCreateError(null); }} onFocus={() => setPickerOpen(true)}
                   onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (exactExisting && !usedIds.has(exactExisting.id)) addRowFor(exactExisting); else if (matches.length === 1) addRowFor(matches[0]); else if (matches.length === 0 && showCreate) handleCreate(); } }}
                   placeholder="＋ Digite o nome do ingrediente" aria-label="Adicionar ingrediente à ficha" className={`w-full ${inputClass}`} />
                 {pickerOpen && (matches.length > 0 || showCreate) && (
-                  <div className="mt-1.5 max-h-56 overflow-auto rounded border border-slate-300 bg-white shadow-sm" onMouseDown={(event) => event.preventDefault()}>
+                  <div className="mt-1.5 max-h-56 overflow-auto rounded border border-slate-300 bg-white shadow-sm" onMouseDown={(event) => { if (!(event.target instanceof HTMLSelectElement || event.target instanceof HTMLOptionElement)) event.preventDefault(); }}>
                     {matches.map((ingredient) => (
                       <button key={ingredient.id} type="button" onClick={() => addRowFor(ingredient)} className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[14px] hover:bg-sky-50 sm:min-h-0 sm:text-[13px]">
                         <span className="font-semibold">{ingredient.name}</span><span className="text-[11px] text-slate-400">{ingredient.unit}{ingredient.category ? ` · ${ingredient.category}` : ""}</span>
