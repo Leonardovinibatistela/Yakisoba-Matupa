@@ -277,8 +277,6 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
   const outOfStockCount = ingredients.filter((ingredient) => ingredient.stock <= 0).length;
   const lowStockCount = ingredients.filter((ingredient) => ingredient.stock > 0 && ingredient.minStock !== null && ingredient.stock < ingredient.minStock).length;
   const cellClass = "border border-slate-300 p-0";
-  const newRowInputClass = "w-full min-h-[34px] bg-transparent px-2 py-1.5 text-[13px] text-slate-900 outline-none placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-inset focus:ring-sky-500";
-  const mobileInputClass = "w-full min-h-[44px] rounded border border-slate-300 bg-white px-3 py-2 text-[16px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-500";
 
   const statusBadge = (status: Status | null) => (status ? <span className={`rounded px-2 py-0.5 text-[11px] font-bold ${status.badge}`}>{status.label}</span> : <span className="text-[11px] font-semibold text-emerald-700">OK</span>);
   const costLabel = (ingredient: Ingredient) => (ingredient.avgCost > 0 ? `${formatUnitCost(ingredient.avgCost)} /${ingredient.unit}` : <span className="text-slate-300" title="Ainda sem compra registrada">sem compra</span>);
@@ -323,23 +321,35 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
     );
   };
 
-  const emptyMessage = ingredients.length === 0 ? "Nenhum ingrediente ainda. Digita o nome no quadro azul e clica em ＋ Adicionar." : visibleIngredients.length === 0 ? `Nenhum ingrediente encontrado pra "${searchQuery.trim()}".` : null;
-
-  const mobileCards = (
-    <div className="space-y-2">
-      <div className="space-y-2 rounded-md border border-slate-300 bg-sky-50 p-3">
-        <p className="text-[11px] font-bold uppercase text-slate-500">＋ Novo ingrediente</p>
-        <input type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Nome (ex: Coca-Cola 300 ml)" aria-label="Nome do novo ingrediente" className={mobileInputClass} />
-        <input type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Categoria (opcional)" aria-label="Categoria do novo ingrediente" className={mobileInputClass} />
-        <div className="flex items-center gap-2">
-          <label htmlFor="new-ingredient-unit-m" className="text-[11px] font-bold uppercase text-slate-500">Medido em</label>
-          <select id="new-ingredient-unit-m" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="min-h-[44px] flex-1 rounded border border-slate-300 bg-white px-2 text-[16px] text-slate-900 outline-none focus:border-sky-500">
+  const addForm = (
+    <section aria-label="Adicionar novo ingrediente" className="mt-5 rounded-xl border-2 border-sky-500 bg-sky-50 p-3 text-slate-800 shadow-md shadow-sky-900/20 sm:p-4">
+      <h3 className="flex items-center gap-2 text-sm font-extrabold text-sky-900"><span className="grid h-6 w-6 place-items-center rounded-full bg-sky-600 text-base leading-none text-white">＋</span> Adicionar novo ingrediente</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-[1.5fr_1fr_auto_auto] md:items-end">
+        <div>
+          <label htmlFor="new-ingredient-name" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-700">Novo ingrediente <span className="text-red-600">*</span></label>
+          <input id="new-ingredient-name" type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Nome, ex: Salmão ou Coca-Cola 300 ml" className="mt-1 min-h-[44px] w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-[16px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-600 md:text-[14px]" />
+        </div>
+        <div>
+          <label htmlFor="new-ingredient-category" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-700">Categoria <span className="font-semibold normal-case text-slate-500">(opcional)</span></label>
+          <input id="new-ingredient-category" type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="ex: Carnes, Bebidas" className="mt-1 min-h-[44px] w-full rounded-md border-2 border-slate-300 bg-white px-3 py-2 text-[16px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-600 md:text-[14px]" />
+        </div>
+        <div>
+          <label htmlFor="new-ingredient-unit" className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-700">Medido em</label>
+          <select id="new-ingredient-unit" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="mt-1 min-h-[44px] w-full rounded-md border-2 border-slate-300 bg-white px-2 text-[16px] text-slate-900 outline-none focus:border-sky-600 md:text-[14px]">
             {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </div>
-        <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="min-h-[44px] w-full rounded bg-sky-600 px-3 py-2 text-sm font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar"}</button>
-        {addError && <p className="text-xs font-semibold text-red-700">{addError}</p>}
+        <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="min-h-[44px] rounded-md bg-sky-600 px-5 py-2 text-sm font-extrabold text-white shadow hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar ingrediente"}</button>
       </div>
+      {addError && <p role="alert" className="mt-2 rounded bg-red-100 px-3 py-2 text-xs font-semibold text-red-700">{addError}</p>}
+      <p className="mt-2 text-[11px] text-slate-600">Depois de adicionar, ele aparece na tabela abaixo — é só clicar nas células dele pra preencher o estoque e o mínimo.</p>
+    </section>
+  );
+
+  const emptyMessage = ingredients.length === 0 ? "Nenhum ingrediente ainda. Preenche o quadro azul acima e clica em ＋ Adicionar ingrediente." : visibleIngredients.length === 0 ? `Nenhum ingrediente encontrado pra "${searchQuery.trim()}".` : null;
+
+  const mobileCards = (
+    <div className="space-y-2">
       {emptyMessage && <p className="rounded-md border border-slate-300 bg-white px-3 py-6 text-center text-sm text-slate-500">{emptyMessage}</p>}
       {visibleIngredients.map((ingredient) => {
         const status = statusOf(ingredient);
@@ -386,23 +396,6 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
           </tr>
         </thead>
         <tbody>
-          <tr className="bg-sky-50">
-            <td className={cellClass}><input type="text" value={newName} onChange={(event) => { setNewName(event.target.value); setAddError(null); }} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="＋ Novo ingrediente (ex: Coca-Cola 300 ml)" aria-label="Nome do novo ingrediente" className={newRowInputClass} /></td>
-            <td className={cellClass}><input type="text" list="ingredient-categories" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleAddIngredient(); }} placeholder="Categoria (opcional)" aria-label="Categoria do novo ingrediente" className={newRowInputClass} /></td>
-            <td className={cellClass} colSpan={4}>
-              <div className="flex flex-wrap items-center gap-2 px-2 py-1">
-                <label htmlFor="new-ingredient-unit" className="text-[11px] font-bold uppercase text-slate-500">Medido em</label>
-                <select id="new-ingredient-unit" value={newUnit} onChange={(event) => setNewUnit(event.target.value as IngredientUnit)} className="rounded border border-slate-300 bg-white px-2 py-1 text-[13px] text-slate-900 outline-none focus:border-sky-500">
-                  {UNIT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <span className="text-[11px] text-slate-500">Depois de adicionar, preenche o estoque e o mínimo direto na linha dele.</span>
-              </div>
-            </td>
-            <td className={`${cellClass} px-1.5`}>
-              <button type="button" onClick={handleAddIngredient} disabled={addingIngredient || !newName.trim()} className="w-full rounded bg-sky-600 px-2 py-1.5 text-xs font-bold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-40">{addingIngredient ? "Adicionando…" : "＋ Adicionar"}</button>
-            </td>
-          </tr>
-          {addError && <tr><td colSpan={7} className="border border-slate-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700">{addError}</td></tr>}
           {emptyMessage && <tr><td colSpan={7} className="border border-slate-300 px-3 py-6 text-center text-slate-500">{emptyMessage}</td></tr>}
 
           {visibleIngredients.map((ingredient) => {
@@ -456,7 +449,9 @@ export default function IngredientsPanel({ ingredients, ingredientPurchases, rec
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-end gap-2">
+      {addForm}
+
+      <div className="mt-5 flex flex-wrap items-end gap-2">
         <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <label htmlFor="ingredient-search" className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Buscar</label>
           <input id="ingredient-search" type="text" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Nome ou categoria, ex: salmão, carnes…" className="mt-1.5 min-h-[44px] w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-[16px] text-white outline-none focus:border-[#ff6b32] sm:min-h-0 sm:text-sm" />
