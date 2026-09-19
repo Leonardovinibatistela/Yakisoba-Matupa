@@ -45,6 +45,7 @@ function PeriodCard({ title, summary, fixedTotal, purchasesTotal }: { title: str
   const isMonth = fixedTotal !== undefined;
   const result = isMonth ? summary.margem - fixedTotal : summary.margem;
   const uncertain = summary.parciais + summary.semCusto;
+  const provisional = uncertain > 0;
   return (
     <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2">
@@ -58,12 +59,12 @@ function PeriodCard({ title, summary, fixedTotal, purchasesTotal }: { title: str
         {isMonth && <Line label="− Gastos fixos do mês inteiro" value={money(fixedTotal)} />}
       </dl>
       <div className="mt-2 rounded-lg bg-white/[0.05] px-3 py-2.5">
-        <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{isMonth ? "Lucro líquido do mês (até agora)" : "Sobra do período"}{summary.margemPct !== null && !isMonth ? ` · ${pctText(summary.margemPct)}` : ""}</p>
-        <p className={`mt-0.5 font-display text-2xl font-extrabold tabular-nums ${toneFor(result)}`}>{money(result)}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{isMonth ? "Lucro líquido do mês (até agora)" : "Sobra do período"}{provisional ? " · provisório" : summary.margemPct !== null && !isMonth ? ` · ${pctText(summary.margemPct)}` : ""}</p>
+        <p className={`mt-0.5 font-display text-2xl font-extrabold tabular-nums ${provisional ? "text-amber-300" : toneFor(result)}`}>{money(result)}</p>
         {isMonth && <p className="mt-0.5 text-[11px] text-white/45">Antes dos gastos fixos sobrou {money(summary.margem)}{summary.margemPct !== null ? ` (${pctText(summary.margemPct)})` : ""}.</p>}
       </div>
       {isMonth && purchasesTotal !== undefined && <p className="mt-2 text-[11px] text-white/40" title="Inclui compra de ingrediente que ainda não foi vendido">Comprado de ingredientes no mês: <span className="font-bold text-white/60">{money(purchasesTotal)}</span> (aproximado)</p>}
-      {uncertain > 0 && <p className="mt-2 text-[11px] text-amber-300/80">⚠️ {uncertain} de {summary.orders} pedido{summary.orders === 1 ? "" : "s"} sem custo completo (prato sem ficha técnica, ingrediente sem compra ou pedido de antes do sistema) — a sobra aparece maior do que é.</p>}
+      {uncertain > 0 && <p className="mt-2 text-[11px] text-amber-300/80">⚠️ {uncertain} de {summary.orders} pedido{summary.orders === 1 ? "" : "s"} sem custo completo (prato sem ficha técnica, ingrediente sem compra ou pedido de antes do sistema) — esse valor está maior do que o real.</p>}
     </div>
   );
 }
@@ -79,14 +80,15 @@ function HealthItem({ ok, info, title, hint }: { ok: boolean; info?: boolean; ti
 
 function BreakEvenCard({ be, bruto }: { be: BreakEven; bruto: number }) {
   const hasFixed = be.fixedTotal > 0;
+  const provisional = be.basis === "estimada";
   return (
-    <Card eyebrow="Ponto de equilíbrio do mês" title={!hasFixed ? "Cadastra os gastos fixos pra ver quanto precisa vender" : be.needed === null ? "Ainda não dá pra calcular — faltam vendas com custo" : be.covered ? "✅ Gastos fixos do mês já cobertos" : `Faltam ${money(be.missing)} de vendas pra cobrir os gastos fixos`}>
+    <Card eyebrow="Ponto de equilíbrio do mês" title={!hasFixed ? "Cadastra os gastos fixos pra ver quanto precisa vender" : be.needed === null ? "Ainda não dá pra calcular — faltam vendas com custo" : provisional ? "Provisório — falta o custo dos ingredientes pra saber de verdade" : be.covered ? "✅ Gastos fixos do mês já cobertos" : `Faltam ${money(be.missing)} de vendas pra cobrir os gastos fixos`}>
       {hasFixed && be.needed !== null && (
         <>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(be.progress * 100)} aria-label="Quanto do ponto de equilíbrio já foi vendido">
-            <div className={`h-full rounded-full ${be.covered ? "bg-emerald-400" : "bg-[#ff5a19]"}`} style={{ width: `${Math.round(be.progress * 100)}%` }} />
+            <div className={`h-full rounded-full ${provisional ? "bg-amber-400" : be.covered ? "bg-emerald-400" : "bg-[#ff5a19]"}`} style={{ width: `${Math.round(be.progress * 100)}%` }} />
           </div>
-          <p className="mt-1.5 text-xs text-white/55">Vendeu <strong className="text-white/85">{money(bruto)}</strong> de <strong className="text-white/85">{money(be.needed)}</strong> necessários ({Math.round(be.progress * 100)}%)</p>
+          <p className="mt-1.5 text-xs text-white/55">Vendeu <strong className="text-white/85">{money(bruto)}</strong> de {provisional ? "no mínimo " : ""}<strong className="text-white/85">{money(be.needed)}</strong> necessários ({Math.round(be.progress * 100)}%)</p>
         </>
       )}
       <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -99,8 +101,8 @@ function BreakEvenCard({ be, bruto }: { be: BreakEven; bruto: number }) {
           <div key={label} className="rounded-lg bg-white/[0.04] px-3 py-2"><dt className="text-[10px] font-bold uppercase tracking-[.12em] text-white/40">{label}</dt><dd className="mt-0.5 text-sm font-bold tabular-nums text-white/90">{value}</dd></div>
         ))}
       </dl>
-      {hasFixed && be.needed !== null && <p className={`mt-3 text-xs ${be.projected >= be.needed ? "text-emerald-300/80" : "text-amber-300/80"}`}>{be.projected >= be.needed ? "No ritmo de hoje, o mês fecha cobrindo os gastos fixos." : "No ritmo de hoje, o mês ainda não cobre os gastos fixos — projeção de vendas abaixo do necessário."}</p>}
-      {be.basis === "estimada" && hasFixed && <p className="mt-2 text-xs text-amber-300/80">⚠️ Nenhum pedido do mês tem custo completo ainda, então a margem acima é só bruto menos taxas. O ponto de equilíbrio de verdade é maior — preenche as fichas técnicas.</p>}
+      {hasFixed && be.needed !== null && !provisional && <p className={`mt-3 text-xs ${be.projected >= be.needed ? "text-emerald-300/80" : "text-amber-300/80"}`}>{be.projected >= be.needed ? "No ritmo de hoje, o mês fecha cobrindo os gastos fixos." : "No ritmo de hoje, o mês ainda não cobre os gastos fixos — projeção de vendas abaixo do necessário."}</p>}
+      {be.basis === "estimada" && hasFixed && <p className="mt-2 text-xs text-amber-300/80">⚠️ Nenhum pedido do mês tem custo completo ainda, então a margem acima é só bruto menos taxas. Por isso o ponto de equilíbrio de verdade é MAIOR do que o mostrado aqui — preenche as fichas técnicas e registra as compras dos ingredientes.</p>}
     </Card>
   );
 }
@@ -168,9 +170,9 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
                     <td className="border border-slate-300 px-2.5 py-2 text-right tabular-nums">{dish.sold}</td>
                     <td className="border border-slate-300 px-2.5 py-2 text-right tabular-nums">{money(dish.price)}</td>
                     <td className="border border-slate-300 px-2.5 py-2 text-right tabular-nums text-slate-600">{dish.complete ? "" : "≥ "}{money(dish.cost)}</td>
-                    <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${dish.margin < 0 ? "text-red-600" : ""}`}>{money(dish.margin)}</td>
-                    <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${marginTone(dish.marginPct)}`}>{pctText(dish.marginPct)}</td>
-                    <td className="border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums">{dish.sold > 0 ? money(dish.profit) : <span className="font-normal text-slate-300">—</span>}</td>
+                    <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${dish.margin < 0 ? "text-red-600" : ""}`}>{dish.complete ? "" : "≤ "}{money(dish.margin)}</td>
+                    <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${dish.complete ? marginTone(dish.marginPct) : "text-slate-500"}`}>{dish.complete ? "" : "≤ "}{pctText(dish.marginPct)}</td>
+                    <td className="border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums">{dish.sold > 0 ? `${dish.complete ? "" : "≤ "}${money(dish.profit)}` : <span className="font-normal text-slate-300">—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -181,11 +183,11 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
               <div key={dish.id} className={`overflow-hidden rounded-md border border-slate-300 text-[13px] text-slate-800 ${dish.complete ? "bg-white" : "bg-amber-50"}`}>
                 <div className="flex items-start justify-between gap-2 border-b border-slate-200 px-3 py-2"><span className="font-bold">{dish.name}</span><span className="shrink-0 text-xs text-slate-500">{dish.sold} vendido{dish.sold === 1 ? "" : "s"}</span></div>
                 <dl className="grid grid-cols-2 divide-x divide-slate-200">
-                  {[["Preço", money(dish.price), ""], ["Custo", `${dish.complete ? "" : "≥ "}${money(dish.cost)}`, ""], ["Sobra por prato", money(dish.margin), dish.margin < 0 ? "text-red-600" : ""], ["Margem", pctText(dish.marginPct), marginTone(dish.marginPct)]].map(([label, value, tone]) => (
+                  {[["Preço", money(dish.price), ""], ["Custo", `${dish.complete ? "" : "≥ "}${money(dish.cost)}`, ""], ["Sobra por prato", `${dish.complete ? "" : "≤ "}${money(dish.margin)}`, dish.margin < 0 ? "text-red-600" : ""], ["Margem", `${dish.complete ? "" : "≤ "}${pctText(dish.marginPct)}`, dish.complete ? marginTone(dish.marginPct) : "text-slate-500"]].map(([label, value, tone]) => (
                     <div key={label} className="border-b border-slate-200 px-3 py-1.5 last:border-b-0"><dt className="text-[10px] font-bold uppercase text-slate-500">{label}</dt><dd className={`font-bold tabular-nums ${tone}`}>{value}</dd></div>
                   ))}
                 </dl>
-                <p className="border-t border-slate-200 px-3 py-1.5 text-xs text-slate-600">Lucro no mês: <strong className="tabular-nums text-slate-800">{dish.sold > 0 ? money(dish.profit) : "—"}</strong>{!dish.complete ? <span className="ml-2 text-amber-800">· custo parcial</span> : ""}</p>
+                <p className="border-t border-slate-200 px-3 py-1.5 text-xs text-slate-600">Lucro no mês: <strong className="tabular-nums text-slate-800">{dish.sold > 0 ? `${dish.complete ? "" : "≤ "}${money(dish.profit)}` : "—"}</strong>{!dish.complete ? <span className="ml-2 text-amber-800">· custo parcial</span> : ""}</p>
               </div>
             ))}
           </div>

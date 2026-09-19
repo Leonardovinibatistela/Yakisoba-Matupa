@@ -1,22 +1,12 @@
 import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
+import { computeAvgCostFromPurchases, computeWeightedAvgCost, isPurchasePriceUnusual } from "./costMath";
+
+export { computeAvgCostFromPurchases, computeWeightedAvgCost, isPurchasePriceUnusual };
 
 export type IngredientUnit = "kg" | "g" | "l" | "ml" | "un";
 export type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number; minStock: number | null; category: string | null };
 export type IngredientPurchase = { id: string; ingredientId: string; quantity: number; totalCost: number; createdAt: Date };
-
-/** Novo custo médio por unidade depois de somar uma compra ao estoque existente — média ponderada simples (sem FIFO/lote). */
-export function computeWeightedAvgCost(currentStock: number, currentAvgCost: number, purchaseQty: number, purchaseUnitCost: number): number {
-  const totalStock = currentStock + purchaseQty;
-  if (totalStock <= 0) return purchaseUnitCost;
-  return (currentStock * currentAvgCost + purchaseQty * purchaseUnitCost) / totalStock;
-}
-
-/** true se o preço unitário digitado numa compra estiver bem fora do custo médio atual (mais de 3x maior ou menor) — usado só pra confirmar com o admin, nunca bloqueia. */
-export function isPurchasePriceUnusual(newUnitCost: number, currentAvgCost: number): boolean {
-  if (currentAvgCost <= 0) return false;
-  return newUnitCost > currentAvgCost * 3 || newUnitCost < currentAvgCost / 3;
-}
 
 const ingredientsCollection = collection(db, "ingredients");
 
@@ -107,14 +97,6 @@ export function subscribeIngredientPurchases(onUpdate: (purchases: IngredientPur
     })),
     onError
   );
-}
-
-/** Custo médio recalculado do ZERO a partir de uma lista de compras — usado ao editar/apagar uma compra, pra nunca ficar em cima de um valor que já sabemos estar errado. */
-export function computeAvgCostFromPurchases(purchases: { quantity: number; totalCost: number }[]): number {
-  const totalQuantity = purchases.reduce((sum, purchase) => sum + purchase.quantity, 0);
-  if (totalQuantity <= 0) return 0;
-  const totalCost = purchases.reduce((sum, purchase) => sum + purchase.totalCost, 0);
-  return totalCost / totalQuantity;
 }
 
 /** Recalcula avgCost do zero (a partir das compras que sobrarem) e ajusta o estoque pela diferença — usado tanto por editPurchase quanto por deletePurchase. newQuantity/newTotalCost nulos = apagar a compra. */
