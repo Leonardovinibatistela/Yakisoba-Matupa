@@ -1,7 +1,7 @@
 import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, Timestamp, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 
-export type IngredientUnit = "kg" | "l" | "un";
+export type IngredientUnit = "kg" | "g" | "l" | "ml" | "un";
 export type Ingredient = { id: string; name: string; unit: IngredientUnit; stock: number; avgCost: number; minStock: number | null; category: string | null };
 export type IngredientPurchase = { id: string; ingredientId: string; quantity: number; totalCost: number; createdAt: Date };
 
@@ -34,6 +34,11 @@ export function subscribeIngredients(onUpdate: (ingredients: Ingredient[]) => vo
 /** Cadastra um ingrediente novo, sem estoque (o estoque entra depois via registerPurchase). */
 export async function addIngredient(name: string, unit: IngredientUnit, category: string | null): Promise<void> {
   await addDoc(ingredientsCollection, { name, unit, stock: 0, avgCost: 0, category });
+}
+
+/** Corrige o nome de um ingrediente já cadastrado. Fichas técnicas e extrato continuam ligados a ele (usam o id, não o nome). */
+export async function renameIngredient(ingredientId: string, name: string): Promise<void> {
+  await updateDoc(doc(db, "ingredients", ingredientId), { name });
 }
 
 /** Define ou corrige a categoria de um ingrediente já cadastrado (ex: "Carnes", "Bebidas"). null remove a categoria. */

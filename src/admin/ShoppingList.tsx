@@ -1,6 +1,6 @@
 import type { Ingredient } from "./ingredients";
 
-const UNIT_LABELS: Record<string, string> = { kg: "kg", l: "litros", un: "unidades" };
+const UNIT_LABELS: Record<string, string> = { kg: "kg", g: "g", l: "litros", ml: "ml", un: "unidades" };
 
 /** Quanto falta pra esse ingrediente voltar pro mínimo definido — só faz sentido quando tem mínimo e o estoque já está abaixo dele. */
 const missingToReachMin = (ingredient: Ingredient): number | null => {
