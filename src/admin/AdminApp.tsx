@@ -11,7 +11,7 @@ import { clearItemName, setItemName, subscribeNameOverrides } from "../nameOverr
 import { clearItemDescription, setItemDescription, subscribeDescriptionOverrides } from "../descriptionOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
-import { setEmergencyPause, subscribeEmergencyPause } from "../emergencyPause";
+import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
@@ -222,8 +222,11 @@ function Dashboard({ user }: { user: User }) {
   };
 
   const [emergencyPaused, setEmergencyPausedState] = useState(false);
+  const [pausedSince, setPausedSince] = useState<Date | null>(null);
   const [togglingPause, setTogglingPause] = useState(false);
-  useEffect(() => subscribeEmergencyPause(setEmergencyPausedState), []);
+  useEffect(() => subscribeEmergencyPauseInfo((info) => { setEmergencyPausedState(info.paused); setPausedSince(info.since); }), []);
+  // "19:40" se foi hoje, "20/09 19:40" se já vem de outro dia.
+  const pausedSinceLabel = pausedSince ? (pausedSince.toDateString() === new Date().toDateString() ? pausedSince.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : pausedSince.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })) : "";
   const handleToggleEmergencyPause = () => {
     const next = !emergencyPaused;
     if (next && !window.confirm("Pausar pedidos agora? O site continua de pé, mas ninguém consegue finalizar pedido até você reativar.")) return;
@@ -606,7 +609,7 @@ function Dashboard({ user }: { user: User }) {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
-              {togglingPause ? "…" : emergencyPaused ? "⏸️ Pausado — reativar" : "⏸️ Pausar pedidos"}
+              {togglingPause ? "…" : emergencyPaused ? `⏸️ Pausado${pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — reativar` : "⏸️ Pausar pedidos"}
             </button>
             <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido a qualquer hora. Fecha sozinho no horário oficial (${STORE_HOURS_LABEL_ADMIN}) — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
@@ -614,6 +617,8 @@ function Dashboard({ user }: { user: User }) {
             <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
           </div>
         </div>
+
+        {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
 
         <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
           {ADMIN_TABS.map((tab) => (

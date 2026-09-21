@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { registerOrder, subscribeNextOrderNumber, type OrderPayload } from "./orders";
+import { newOrderId, registerOrderWithRetry, subscribeNextOrderNumber, type OrderPayload } from "./orders";
 import { addonSections, menuSections, type MenuItem } from "./menuData";
 import { formatDaysLabel, subscribeDailyCombos, type DailyCombo } from "./dailyCombos";
 import { subscribeSoldOutItems } from "./soldOut";
@@ -184,8 +184,13 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<"pix" | "cartao" | "dinheiro">("pix");
   const [pixCopied, setPixCopied] = useState(false);
   const [confirmedOrderNumber, setConfirmedOrderNumber] = useState<number | null>(null);
-  const [nextOrderNumber, setNextOrderNumber] = useState(1);
+  // null = o contador ainda não carregou (ou falhou). Antes o valor inicial era 1, e a
+  // mensagem do WhatsApp saía "Pedido #1" toda vez que o contador não chegava a tempo.
+  const [nextOrderNumber, setNextOrderNumber] = useState<number | null>(null);
   useEffect(() => subscribeNextOrderNumber(setNextOrderNumber), []);
+  // Pedido que não conseguimos confirmar no sistema da loja (mesmo depois de tentar de novo).
+  const [failedOrder, setFailedOrder] = useState<{ id: string; payload: OrderPayload } | null>(null);
+  const [retryingFailedOrder, setRetryingFailedOrder] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   useEffect(() => subscribeSoldOutItems(setSoldOutIds), []);
@@ -259,6 +264,20 @@ export default function App() {
     return next;
   });
   const changeSection = (id: string) => { setActiveSection(id); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  // Grava o pedido no sistema da loja (roda em segundo plano, depois do WhatsApp já aberto).
+  // Se não der nem depois de tentar de novo, avisa o cliente na tela em vez de engolir o erro.
+  const saveOrder = (orderId: string, payload: OrderPayload) => registerOrderWithRetry(payload, orderId)
+    .then((orderNumber) => {
+      setFailedOrder(null);
+      setConfirmedOrderNumber(orderNumber);
+      setTimeout(() => setConfirmedOrderNumber(null), 10000);
+    })
+    .catch(() => setFailedOrder({ id: orderId, payload }));
+  const retryFailedOrder = () => {
+    if (!failedOrder || retryingFailedOrder) return;
+    setRetryingFailedOrder(true);
+    saveOrder(failedOrder.id, failedOrder.payload).finally(() => setRetryingFailedOrder(false));
+  };
   const checkout = () => {
     if (!cartItems.length || !storeOpen || emergencyPaused || isSubmitting) return;
     if (!customerName.trim() || !customerPhone.trim()) return;
@@ -275,7 +294,7 @@ export default function App() {
     ]).concat(orphanAddons.map((addon) => `${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`));
     const buildMessage = () => [
       "Olá, Sooba! Gostaria de fazer este pedido:",
-      `Pedido #${nextOrderNumber}`,
+      ...(nextOrderNumber !== null ? [`Pedido #${nextOrderNumber}`] : []),
       "",
       `Nome: ${customerName.trim()}`,
       `Telefone: ${customerPhone.trim()}`,
@@ -294,6 +313,7 @@ export default function App() {
       "",
       "Aguardo a confirmação do pedido. Obrigado!",
     ].join("\n");
+    const orderId = newOrderId();
     const orderPayload: OrderPayload = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
@@ -318,10 +338,7 @@ export default function App() {
     // clicando de novo achando que não funcionou) crie um segundo pedido.
     setQuantities({});
     setIsSubmitting(false);
-    registerOrder(orderPayload).then((orderNumber) => {
-      setConfirmedOrderNumber(orderNumber);
-      setTimeout(() => setConfirmedOrderNumber(null), 10000);
-    }).catch(() => {});
+    saveOrder(orderId, orderPayload);
   };
   return <div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
@@ -342,6 +359,14 @@ export default function App() {
     <button type="button" onClick={() => setCartOpen(true)} className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-between rounded-2xl bg-[#1d1714] px-4 py-3.5 text-white shadow-[0_15px_35px_rgba(0,0,0,.35)] ring-1 ring-white/10 lg:hidden" aria-label="Abrir meu pedido"><span className="flex items-center gap-2.5"><span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff5a19]"><CartIcon className="h-4 w-4" /></span><span className="text-left"><span className="block text-xs font-bold">Meu Pedido</span><span className="block text-[11px] text-white/55">{totalQuantity ? `${totalQuantity} ${totalQuantity === 1 ? "item" : "itens"} selecionado${totalQuantity === 1 ? "" : "s"}` : "Nenhum item selecionado"}</span></span></span><span className="font-display text-lg font-extrabold tracking-[-.04em] text-[#ff875c]">{formatTotal(subtotal)}</span></button>
     {cartOpen && <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Meu Pedido" onMouseDown={() => setCartOpen(false)}><div className="flex h-full w-full max-w-md flex-col bg-[#1a1513] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between border-b border-white/10 px-5 py-5"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Sooba</p><h2 className="mt-1 font-display text-2xl font-extrabold tracking-[-.05em] text-white">Meu Pedido</h2></div><button type="button" onClick={() => setCartOpen(false)} className="grid h-10 w-10 place-items-center rounded-full border border-white/15 text-white/70 transition hover:border-white/35 hover:text-white" aria-label="Fechar pedido"><span className="text-xl leading-none">×</span></button></div><div className="min-h-0 flex-1 overflow-y-auto px-5 py-5"><CartSummary cartItems={cartItems} quantities={quantities} subtotal={subtotal} total={total} onQuantityChange={setQuantity} onRemoveYakiInstance={removeYakiInstance} onCheckout={checkout} compact deliveryType={deliveryType} setDeliveryType={setDeliveryType} deliveryFee={deliveryFee} cutlery={cutlery} setCutlery={setCutlery} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} pixCopied={pixCopied} setPixCopied={setPixCopied} storeOpen={storeOpen} emergencyPaused={emergencyPaused} notes={notes} setNotes={setNotes} customerName={customerName} setCustomerName={setCustomerName} customerPhone={customerPhone} setCustomerPhone={setCustomerPhone} location={location} setLocation={setLocation} houseNumber={houseNumber} setHouseNumber={setHouseNumber} neighborhood={neighborhood} setNeighborhood={setNeighborhood} /></div></div></div>}
     {confirmedOrderNumber !== null && <div className="fixed inset-x-3 top-3 z-[60] mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-[#ff5a19]/40 bg-[#1a1513] px-4 py-3.5 shadow-[0_12px_35px_rgba(0,0,0,.4)] sm:left-1/2 sm:right-auto sm:-translate-x-1/2" role="status"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#ff5a19] font-display text-sm font-extrabold text-white">#{confirmedOrderNumber}</span><div><p className="text-sm font-bold text-white">Pedido #{confirmedOrderNumber} confirmado!</p><p className="text-xs text-white/55">Guarde esse número — ele também aparece no painel do Sooba.</p></div><button type="button" onClick={() => setConfirmedOrderNumber(null)} aria-label="Fechar aviso" className="ml-auto shrink-0 text-white/50 transition hover:text-white">×</button></div>}
+    {failedOrder && <div className="fixed inset-x-3 top-3 z-[60] mx-auto max-w-sm rounded-2xl border border-red-400/50 bg-[#2a1210] px-4 py-4 shadow-[0_12px_35px_rgba(0,0,0,.4)] sm:left-1/2 sm:right-auto sm:-translate-x-1/2" role="alert">
+      <p className="text-sm font-bold text-red-300">⚠️ Não conseguimos confirmar o registro do seu pedido no sistema da loja.</p>
+      <p className="mt-1.5 text-xs leading-relaxed text-white/70">A mensagem já foi pelo WhatsApp, então confirme por lá com a loja. Se quiser, tente registrar de novo — não cria pedido repetido.</p>
+      <div className="mt-3 flex gap-2">
+        <button type="button" onClick={retryFailedOrder} disabled={retryingFailedOrder} className="rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-60">{retryingFailedOrder ? "Tentando…" : "Tentar de novo"}</button>
+        <button type="button" onClick={() => setFailedOrder(null)} className="rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-white/75 transition hover:border-white/40 hover:text-white">Fechar</button>
+      </div>
+    </div>}
   </div>;
 }
 

@@ -1,5 +1,6 @@
 import { collection, doc, onSnapshot, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
+import { retry } from "./retry";
 
 export type OrderLineItem = { id: string; name: string; quantity: number; unitPrice: number; lineTotal: number; parentId?: string };
 
@@ -47,15 +48,30 @@ export function subscribeNextOrderNumber(onUpdate: (nextNumber: number) => void,
   }, onError);
 }
 
-export async function registerOrder(payload: OrderPayload): Promise<number> {
+/** Código do pedido, sorteado no aparelho do cliente (mesmo formato do Firestore). Fica fixo durante as tentativas de registrar. */
+export const newOrderId = (): string => doc(ordersCollectionRef).id;
+
+export async function registerOrder(payload: OrderPayload, orderId?: string): Promise<number> {
   const orderNumber = await runTransaction(db, async (transaction) => {
     const counterSnap = await transaction.get(countersRef);
     const data = counterSnap.exists() ? counterSnap.data() : null;
     const next = computeNextOrderNumber(data?.current as number | undefined);
     transaction.set(countersRef, { current: next });
-    const newOrderRef = doc(ordersCollectionRef);
+    // Com código fixo (orderId), tentar de novo depois de uma falha NUNCA cria o
+    // mesmo pedido duas vezes: se a primeira tentativa já tinha gravado, a
+    // segunda vira uma "edição", que as regras do banco negam pra quem não é
+    // admin — a transação inteira falha e o contador não anda.
+    const newOrderRef = orderId ? doc(ordersCollectionRef, orderId) : doc(ordersCollectionRef);
     transaction.set(newOrderRef, { ...payload, orderNumber: next, createdAt: serverTimestamp() });
     return next;
   });
   return orderNumber;
 }
+
+/**
+ * Registra o pedido tentando até 3 vezes (na hora, +1,5s, +4s) — cobre queda
+ * curta de internet ou instabilidade do Firebase. Se todas falharem, lança o
+ * erro, e quem chama TEM que avisar o cliente (antes isso era engolido em
+ * silêncio e o pedido só existia no WhatsApp, sem aparecer no painel).
+ */
+export const registerOrderWithRetry = (payload: OrderPayload, orderId: string): Promise<number> => retry(() => registerOrder(payload, orderId), [1500, 4000]);
