@@ -11,6 +11,8 @@ import { subscribeCustomItems, type CustomMenuItem } from "./customItems";
 import { subscribeHiddenItems } from "./hiddenItems";
 import { subscribeEmergencyPause } from "./emergencyPause";
 import { subscribeManualOpen } from "./manualOpen";
+import type { ManualOpenInfo } from "./manualOpenRule";
+import { STORE_HOURS_LABEL, isManualOpenEffective, isStoreOpen } from "./storeHours";
 
 const allItems = [...menuSections, ...addonSections].flatMap((section) => section.items);
 const allItemsById = new Map(allItems.map((item) => [item.id, item]));
@@ -140,26 +142,6 @@ const labelParentNames = (groups: { parent: CartLine; addons: CartLine[] }[]): M
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const DELIVERY_FEE = 7;
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
-// Horário de funcionamento: seg-sex 18:30-22h, sáb-dom 18:30-23h.
-function scheduleMinutes(date: Date) {
-  const day = date.getDay(); // 0 = domingo ... 6 = sábado
-  const isWeekend = day === 0 || day === 6;
-  return { openMinutes: 18 * 60 + 30, closeMinutes: isWeekend ? 23 * 60 : 22 * 60 };
-}
-function isStoreOpen(date = new Date()) {
-  const { openMinutes, closeMinutes } = scheduleMinutes(date);
-  const minutesNow = date.getHours() * 60 + date.getMinutes();
-  return minutesNow >= openMinutes && minutesNow < closeMinutes;
-}
-// Usado pela abertura antecipada (botão do admin): mesmo com o site aberto
-// na marra fora do horário, nunca deixa passar do horário oficial de
-// fechar — assim o Sooba não corre risco de ficar "aberto" a noite toda
-// se o admin esquecer de desligar o botão.
-function isBeforeClosingTime(date = new Date()) {
-  const minutesNow = date.getHours() * 60 + date.getMinutes();
-  return minutesNow < scheduleMinutes(date).closeMinutes;
-}
-const STORE_HOURS_LABEL = "Seg a Sex 18:30–22h · Sáb e Dom 18:30–23h";
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
 const paymentOptions: { id: "pix" | "cartao" | "dinheiro"; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Cartão" }, { id: "dinheiro", label: "Dinheiro" }];
 const PIX_KEY = "623212490001-56";
@@ -219,16 +201,17 @@ export default function App() {
   }, [customItems, dailyCombos]);
   const [emergencyPaused, setEmergencyPaused] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
-  const [manualOpen, setManualOpen] = useState(false);
-  useEffect(() => subscribeManualOpen(setManualOpen), []);
-  const [scheduleState, setScheduleState] = useState(() => ({ open: isStoreOpen(), beforeClosing: isBeforeClosingTime() }));
+  const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
+  useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
+  const [scheduleState, setScheduleState] = useState(() => ({ open: isStoreOpen() }));
   useEffect(() => {
-    const interval = setInterval(() => setScheduleState({ open: isStoreOpen(), beforeClosing: isBeforeClosingTime() }), 30000);
+    const interval = setInterval(() => setScheduleState({ open: isStoreOpen() }), 30000);
     return () => clearInterval(interval);
   }, []);
-  // Abertura antecipada nunca vale depois do horário oficial de fechar —
-  // assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
-  const storeOpen = scheduleState.open || (manualOpen && scheduleState.beforeClosing);
+  // Abertura antecipada: (1) nunca vale depois do horário oficial de fechar e (2) só vale no dia em que
+  // foi ligada (expira à meia-noite) — assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
+  // scheduleState troca a cada 30s, então isso é reavaliado sozinho na virada do dia.
+  const storeOpen = scheduleState.open || isManualOpenEffective(manualOpenInfo, new Date());
   const [notes, setNotes] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");

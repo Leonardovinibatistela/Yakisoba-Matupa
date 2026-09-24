@@ -13,6 +13,8 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
+import type { ManualOpenInfo } from "../manualOpenRule";
+import { isManualOpenEffective } from "../storeHours";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
@@ -244,9 +246,18 @@ function Dashboard({ user }: { user: User }) {
     setEmergencyPause(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingPause(false));
   };
 
-  const [manualOpen, setManualOpenState] = useState(false);
+  const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
   const [togglingManualOpen, setTogglingManualOpen] = useState(false);
-  useEffect(() => subscribeManualOpen(setManualOpenState), []);
+  useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
+  // Reavalia a cada 30s: quando o site fecha no horário oficial (ou passa da meia-noite), a abertura antecipada
+  // deixa de valer e o botão volta sozinho a "Abrir agora" — mesmo com o painel aberto a noite inteira,
+  // pra quem só olha o painel enxergar que o site fechou. Mesma regra do site (storeHours.ts).
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setClockTick((tick) => tick + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  const manualOpen = isManualOpenEffective(manualOpenInfo, new Date());
   const handleToggleManualOpen = () => {
     const next = !manualOpen;
     setTogglingManualOpen(true);
@@ -621,7 +632,7 @@ function Dashboard({ user }: { user: User }) {
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingPause ? "…" : emergencyPaused ? `⏸️ Pausado${pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — reativar` : "⏸️ Pausar pedidos"}
             </button>
-            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido a qualquer hora. Fecha sozinho no horário oficial (${STORE_HOURS_LABEL_ADMIN}) — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
+            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido fora do horário, só por hoje: desliga sozinho à meia-noite e nunca passa do horário oficial de fechar (${STORE_HOURS_LABEL_ADMIN}) — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
             </button>
             <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
