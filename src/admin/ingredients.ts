@@ -70,6 +70,15 @@ export async function adjustStock(ingredientId: string, newStock: number): Promi
   await updateDoc(doc(db, "ingredients", ingredientId), { stock: newStock });
 }
 
+/**
+ * Define o custo de um ingrediente que ainda não teve compra registrada (usado na importação da planilha do cliente).
+ * É só um custo de referência: na primeira compra de verdade, o custo passa a vir da compra (com estoque zerado, a
+ * compra vale sozinha — ver computeWeightedAvgCost). Não mexe no estoque.
+ */
+export async function setIngredientReferenceCost(ingredientId: string, cost: number): Promise<void> {
+  await updateDoc(doc(db, "ingredients", ingredientId), { avgCost: cost });
+}
+
 /** Define o estoque mínimo (o que dispara "precisa comprar" na lista de compras). null remove o mínimo (ingrediente some da lista de "precisa comprar", mas continua na lista geral ordenada). */
 export async function setMinStock(ingredientId: string, minStock: number | null): Promise<void> {
   await updateDoc(doc(db, "ingredients", ingredientId), { minStock });

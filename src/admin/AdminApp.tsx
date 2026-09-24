@@ -18,7 +18,7 @@ import { isManualOpenEffective } from "../storeHours";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
-import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, setIngredientCategory, renameIngredient, deleteIngredient, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
+import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, setIngredientReferenceCost, setIngredientCategory, renameIngredient, deleteIngredient, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
 import { subscribeFixedExpenses, subscribeFixedExpenseHistory, addFixedExpense, updateFixedExpense, deleteFixedExpense, type FixedExpense, type FixedExpenseHistoryEntry } from "./fixedExpenses";
 import { subscribePaymentFeeRates, setPaymentFeeRates as persistPaymentFeeRates, type PaymentFeeRates } from "./paymentFees";
@@ -30,6 +30,7 @@ import { subscribeOrderCostRates, setOrderCostRates as persistOrderCostRates, DE
 import FinanceiroPanel from "./FinanceiroPanel";
 import StockMovementsLog from "./StockMovementsLog";
 import BackupPanel, { readLastBackup } from "./BackupPanel";
+import ImportPanel from "./ImportPanel";
 import { fetchBackup, fetchOrders } from "./backupData";
 import { isBackupOverdue } from "./backupFormat";
 import ShoppingList from "./ShoppingList";
@@ -39,12 +40,13 @@ const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup";
+type AdminTab = "visao" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 
-// A aba Backup só aparece pra quem cuida do sistema (é só a tela que some — quem administra o
+// As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
 // site continua sendo quem está nas regras do Firebase). Em minúsculas, igual o Firebase devolve o e-mail.
-const BACKUP_TAB_EMAILS = ["lv6696184@gmail.com"];
+const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
+const DEVELOPER_TAB_IDS: AdminTab[] = ["backup", "importar"];
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
@@ -53,6 +55,7 @@ const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "estoque", label: "Estoque" },
   { id: "financeiro", label: "Financeiro" },
   { id: "backup", label: "Backup" },
+  { id: "importar", label: "Importar" },
 ];
 
 // Assinatura do pedido (itens + total) — dois pedidos com a mesma assinatura,
@@ -125,7 +128,7 @@ function LoginScreen() {
 }
 
 function Dashboard({ user }: { user: User }) {
-  const canSeeBackup = BACKUP_TAB_EMAILS.includes((user.email ?? "").toLowerCase());
+  const isDeveloper = DEVELOPER_TAB_EMAILS.includes((user.email ?? "").toLowerCase());
   const [activeTab, setActiveTab] = useState<AdminTab>("visao");
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
@@ -642,7 +645,7 @@ function Dashboard({ user }: { user: User }) {
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
 
         <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
-          {ADMIN_TABS.filter((tab) => tab.id !== "backup" || canSeeBackup).map((tab) => (
+          {ADMIN_TABS.filter((tab) => !DEVELOPER_TAB_IDS.includes(tab.id) || isDeveloper).map((tab) => (
             <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${activeTab === tab.id ? "bg-[#ff5a19] text-white" : "text-white/55 hover:text-white"}`}>
               {tab.id === "backup" && isBackupOverdue(lastBackupAt, new Date()) ? "Backup ⚠️" : tab.label}
             </button>
@@ -803,7 +806,9 @@ function Dashboard({ user }: { user: User }) {
 
         </> : ordersLoadingNotice)}
 
-        {activeTab === "backup" && canSeeBackup && <BackupPanel lastBackupAt={lastBackupAt} loadBackup={fetchBackup} loadOrders={fetchOrders} onBackupDone={setLastBackupAt} />}
+        {activeTab === "backup" && isDeveloper && <BackupPanel lastBackupAt={lastBackupAt} loadBackup={fetchBackup} loadOrders={fetchOrders} onBackupDone={setLastBackupAt} />}
+
+        {activeTab === "importar" && isDeveloper && <ImportPanel ingredients={ingredients} recipes={recipes} catalog={itemCatalog} onAddIngredient={addIngredient} onSetReferenceCost={setIngredientReferenceCost} onSetRecipe={setRecipe} />}
 
         {activeTab === "estoque" && (
           <div className="space-y-8">
