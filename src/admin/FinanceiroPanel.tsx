@@ -6,7 +6,7 @@ import type { FixedExpense, FixedExpenseHistoryEntry } from "./fixedExpenses";
 import type { PaymentFeeRates } from "./paymentFees";
 import type { OrderCostRates } from "./orderCosts";
 import EditableCell from "./EditableCell";
-import { analyzeDishes, breakEven, ingredientsWithoutCost, paymentBreakdown, soldByItem, summarizeOrders, type BreakEven, type CatalogItem, type DishRow, type DishWithoutRecipe, type PeriodSummary } from "./financeiroMath";
+import { analyzeDishes, breakEven, ingredientsWithoutCost, paymentBreakdown, simulatePrice, soldByItem, suggestPrice, summarizeOrders, type BreakEven, type CatalogItem, type DishRow, type DishWithoutRecipe, type PeriodSummary } from "./financeiroMath";
 import { SAVE_FAILED, parseNumber, toDraft, withTimeout } from "./stockFormat";
 
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -145,13 +145,83 @@ const DISH_HEADERS: { key: DishSortKey; label: string; align: "left" | "right"; 
   { key: "profit", label: "Lucro no mês", align: "right", hint: "Sobra por prato × quantidade vendida no mês (estimativa, com o custo de hoje)." },
 ];
 
+const MARGIN_CHOICES = [45, 50, 55, 60, 65, 70];
+const LOW_MARGIN = 0.5;
+
+/** "Quanto cobrar?" — escolhe a margem que quer e vê o preço, a sobra e o que muda no lucro do mês. Só simula: não mexe no cardápio. */
+function PriceSimulator({ dish, onClose }: { dish: DishRow; onClose: () => void }) {
+  const [target, setTarget] = useState(dish.marginPct !== null && dish.marginPct < LOW_MARGIN ? 50 : 60);
+  const [manual, setManual] = useState("");
+  const suggested = suggestPrice(dish.cost, target / 100);
+  const manualPrice = manual.trim() === "" ? null : parseNumber(manual);
+  const manualInvalid = manualPrice !== null && !(manualPrice > 0);
+  const price = manualPrice !== null && !manualInvalid ? manualPrice : suggested;
+  const sim = price !== null ? simulatePrice(dish, price) : null;
+  const gainTone = sim && sim.ganhoMes > 0 ? "text-emerald-700" : sim && sim.ganhoMes < 0 ? "text-red-600" : "text-slate-700";
+  return (
+    <section aria-label={`Simulador de preço: ${dish.name}`} className="mt-4 rounded-md border-2 border-sky-500 bg-sky-50 p-3 text-[13px] text-slate-800 shadow-md shadow-sky-900/20 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h4 className="text-sm font-extrabold text-sky-900">💲 Simulador de preço — {dish.name}</h4>
+        <button type="button" onClick={onClose} className="rounded border border-sky-300 bg-white px-2.5 py-1 text-xs font-bold text-sky-800 hover:bg-sky-100">Fechar</button>
+      </div>
+      <p className="mt-1.5 text-xs text-slate-600">Hoje: preço <strong>{money(dish.price)}</strong>, custo <strong>{dish.complete ? "" : "≥ "}{money(dish.cost)}</strong>, margem <strong>{pctText(dish.marginPct)}</strong>, {dish.sold} vendido{dish.sold === 1 ? "" : "s"} no mês.</p>
+      {!dish.complete && <p className="mt-1.5 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">⚠️ O custo desse prato ainda está incompleto (falta: {dish.missingNames.join(", ")}). O preço sugerido pode sair baixo demais.</p>}
+
+      <p className="mt-3 text-[11px] font-extrabold uppercase tracking-wide text-slate-600">Que margem você quer?</p>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {MARGIN_CHOICES.map((choice) => (
+          <button key={choice} type="button" onClick={() => { setTarget(choice); setManual(""); }} aria-pressed={manualPrice === null && target === choice} className={`min-h-[36px] rounded-full border px-3 py-1 text-xs font-bold ${manualPrice === null && target === choice ? "border-sky-600 bg-sky-600 text-white" : "border-sky-300 bg-white text-sky-800 hover:bg-sky-100"}`}>{choice}%</button>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">A planilha do cliente usa custo ÷ 0,56, que dá cerca de 44% de margem.</p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
+        <div>
+          <p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-600">Preço sugerido (termina em ,90)</p>
+          <p className="mt-0.5 font-display text-2xl font-extrabold tabular-nums text-sky-900">{suggested !== null ? money(suggested) : "—"}</p>
+        </div>
+        <div>
+          <label htmlFor={`sim-price-${dish.id}`} className="block text-[11px] font-extrabold uppercase tracking-wide text-slate-600">Ou digite um preço pra testar</label>
+          <input id={`sim-price-${dish.id}`} type="text" inputMode="decimal" value={manual} onChange={(event) => setManual(event.target.value)} placeholder="ex: 59,90" className="mt-1 min-h-[40px] w-full max-w-[10rem] rounded-md border-2 border-slate-300 bg-white px-2.5 py-1.5 text-[16px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-600 md:text-[14px]" />
+          {manualInvalid && <p role="alert" className="mt-1 text-xs font-semibold text-red-600">Digite um valor maior que zero.</p>}
+        </div>
+      </div>
+
+      {sim && (
+        <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {[
+            ["Preço novo", money(sim.price), "text-slate-900"],
+            ["Sobra por prato", money(sim.sobra), sim.sobra < 0 ? "text-red-600" : "text-slate-900"],
+            ["Margem", pctText(sim.marginPct), marginTone(sim.marginPct)],
+            ["Lucro no mês", dish.sold > 0 ? money(sim.lucroMes) : "—", "text-slate-900"],
+            ["Muda no mês", dish.sold > 0 ? `${sim.ganhoMes > 0 ? "+" : ""}${money(sim.ganhoMes)}` : "—", gainTone],
+          ].map(([label, value, tone]) => (
+            <div key={label} className="rounded border border-sky-200 bg-white px-2.5 py-1.5"><dt className="text-[10px] font-bold uppercase text-slate-500">{label}</dt><dd className={`font-bold tabular-nums ${tone}`}>{value}</dd></div>
+          ))}
+        </dl>
+      )}
+      <ul className="mt-3 space-y-1 text-[11px] leading-snug text-slate-500">
+        <li>A conta usa a quantidade vendida neste mês. <strong className="text-slate-700">Preço maior pode vender menos</strong>, então o ganho só vale se as vendas se mantiverem.</li>
+        <li>Só conta o custo dos ingredientes e da embalagem da ficha. Gás, mão de obra e aluguel não entram.</li>
+        <li>Pra mudar o preço no site: <strong className="text-slate-700">Cardápio</strong> → campo de preço do prato.</li>
+      </ul>
+    </section>
+  );
+}
+
 function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: DishWithoutRecipe[] }) {
+  const [onlyLow, setOnlyLow] = useState(false);
+  const [simulatingId, setSimulatingId] = useState<string | null>(null);
+  const simulating = simulatingId ? rows.find((dish) => dish.id === simulatingId) ?? null : null;
+  const isLow = (dish: DishRow) => dish.marginPct !== null && dish.marginPct < LOW_MARGIN;
+  const lowCount = rows.filter(isLow).length;
   const [sort, setSort] = useState<{ key: DishSortKey; dir: 1 | -1 }>({ key: "profit", dir: -1 });
   const toggle = (key: DishSortKey) => setSort((current) => (current.key === key ? { key, dir: current.dir === 1 ? -1 : 1 } : { key, dir: key === "name" ? 1 : -1 }));
   const sorted = [...rows].sort((a, b) => {
     const result = sort.key === "name" ? compareText(a.name, b.name) : ((a[sort.key] ?? -Infinity) as number) - ((b[sort.key] ?? -Infinity) as number);
     return Number.isNaN(result) || result === 0 ? compareText(a.name, b.name) : result * sort.dir;
   });
+  const visible = onlyLow ? sorted.filter(isLow) : sorted;
   const soldWithoutRecipe = withoutRecipe.filter((dish) => dish.sold > 0);
   const restWithoutRecipe = withoutRecipe.filter((dish) => dish.sold === 0);
   return (
@@ -160,15 +230,22 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
         <p className="mt-4 rounded-xl border border-white/10 p-4 text-sm text-white/50">Nenhum prato com ficha técnica ainda. Preenche em Cardápio → botão 🧂 Ficha técnica de cada prato.</p>
       ) : (
         <>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            <button type="button" onClick={() => setOnlyLow((current) => !current)} aria-pressed={onlyLow} className={`min-h-[36px] rounded-full border px-3.5 py-1.5 font-bold transition ${onlyLow ? "border-amber-400 bg-amber-400 text-slate-900" : "border-white/20 text-white/75 hover:border-white/40 hover:text-white"}`}>{onlyLow ? "✓ " : ""}Só margem abaixo de {Math.round(LOW_MARGIN * 100)}% ({lowCount})</button>
+            <span className="text-white/45">Clique em <strong className="text-white/70">💲 Simular</strong> num prato pra ver quanto cobrar.</span>
+          </div>
+          {simulating && <PriceSimulator key={simulating.id} dish={simulating} onClose={() => setSimulatingId(null)} />}
+          {visible.length === 0 && <p className="mt-4 rounded-xl border border-white/10 p-4 text-sm text-white/55">Nenhum prato com margem abaixo de {Math.round(LOW_MARGIN * 100)}%. 🎉</p>}
           <div className="mt-4 hidden max-h-[70vh] overflow-auto rounded-md border border-slate-300 bg-white text-[13px] text-slate-800 shadow-sm md:block">
             <table className="w-full min-w-[720px] border-collapse">
               <thead className="sticky top-0 z-10"><tr>
                 {DISH_HEADERS.map((header) => (
                   <th key={header.key} title={header.hint} onClick={() => toggle(header.key)} className={`cursor-pointer select-none border border-slate-300 bg-slate-100 px-2.5 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-600 hover:bg-slate-200 ${header.align === "right" ? "text-right" : "text-left"}`}>{header.label} <span className="text-slate-400">{sort.key === header.key ? (sort.dir === 1 ? "▲" : "▼") : ""}</span></th>
                 ))}
+                <th className="border border-slate-300 bg-slate-100 px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-slate-600">Preço</th>
               </tr></thead>
               <tbody>
-                {sorted.map((dish) => (
+                {visible.map((dish) => (
                   <tr key={dish.id} className={dish.complete ? "" : "bg-amber-50"}>
                     <td className="border border-slate-300 px-2.5 py-2 font-semibold">{dish.name}{!dish.complete && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`Falta custo de: ${dish.missingNames.join(", ")}`}>custo parcial</span>}</td>
                     <td className="border border-slate-300 px-2.5 py-2 text-right tabular-nums">{dish.sold}</td>
@@ -177,13 +254,14 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
                     <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${dish.margin < 0 ? "text-red-600" : ""}`}>{dish.complete ? "" : "≤ "}{money(dish.margin)}</td>
                     <td className={`border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums ${dish.complete ? marginTone(dish.marginPct) : "text-slate-500"}`}>{dish.complete ? "" : "≤ "}{pctText(dish.marginPct)}</td>
                     <td className="border border-slate-300 px-2.5 py-2 text-right font-bold tabular-nums">{dish.sold > 0 ? `${dish.complete ? "" : "≤ "}${money(dish.profit)}` : <span className="font-normal text-slate-300">—</span>}</td>
+                    <td className="border border-slate-300 px-2 py-1.5 text-center"><button type="button" onClick={() => setSimulatingId(dish.id === simulatingId ? null : dish.id)} aria-label={`Simular preço de ${dish.name}`} className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold ${dish.id === simulatingId ? "border-sky-600 bg-sky-600 text-white" : "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100"}`}>💲 Simular</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <div className="mt-4 space-y-2 md:hidden">
-            {sorted.map((dish) => (
+            {visible.map((dish) => (
               <div key={dish.id} className={`overflow-hidden rounded-md border border-slate-300 text-[13px] text-slate-800 ${dish.complete ? "bg-white" : "bg-amber-50"}`}>
                 <div className="flex items-start justify-between gap-2 border-b border-slate-200 px-3 py-2"><span className="font-bold">{dish.name}</span><span className="shrink-0 text-xs text-slate-500">{dish.sold} vendido{dish.sold === 1 ? "" : "s"}</span></div>
                 <dl className="grid grid-cols-2 divide-x divide-slate-200">
@@ -192,6 +270,7 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
                   ))}
                 </dl>
                 <p className="border-t border-slate-200 px-3 py-1.5 text-xs text-slate-600">Lucro no mês: <strong className="tabular-nums text-slate-800">{dish.sold > 0 ? `${dish.complete ? "" : "≤ "}${money(dish.profit)}` : "—"}</strong>{!dish.complete ? <span className="ml-2 text-amber-800">· custo parcial</span> : ""}</p>
+                <div className="border-t border-slate-200 px-3 py-2"><button type="button" onClick={() => setSimulatingId(dish.id === simulatingId ? null : dish.id)} aria-label={`Simular preço de ${dish.name}`} className={`min-h-[40px] rounded-full border px-3.5 py-1.5 text-xs font-bold ${dish.id === simulatingId ? "border-sky-600 bg-sky-600 text-white" : "border-sky-300 bg-sky-50 text-sky-800"}`}>💲 Simular preço</button></div>
               </div>
             ))}
           </div>

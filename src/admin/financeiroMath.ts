@@ -177,3 +177,33 @@ export function ingredientsWithoutCost(ingredients: Ingredient[], recipes: Recip
   Object.values(recipes).forEach((rows) => rows.forEach((row) => used.add(row.ingredientId)));
   return ingredients.filter((ingredient) => used.has(ingredient.id) && ingredient.avgCost <= 0);
 }
+
+/**
+ * Menor preço terminado em ,90 que dá pelo menos a margem desejada (0 a 1) sobre o custo.
+ * Margem = (preço − custo) ÷ preço, igual à da tabela "Lucro por prato". null se não der pra calcular.
+ */
+export function suggestPrice(cost: number, targetMargin: number): number | null {
+  if (!(cost > 0) || !(targetMargin >= 0) || targetMargin >= 0.95) return null;
+  const raw = cost / (1 - targetMargin);
+  let candidate = Math.floor(raw) + 0.9;
+  if (candidate < raw - 1e-9) candidate += 1;
+  return Math.round(candidate * 100) / 100;
+}
+
+export type PriceSimulation = {
+  price: number;
+  /** quanto sobra por prato depois do custo dos ingredientes */
+  sobra: number;
+  marginPct: number | null;
+  /** lucro do mês com este preço, SE vender a mesma quantidade */
+  lucroMes: number;
+  /** quanto isso muda no mês em relação ao preço de hoje (mesma quantidade vendida) */
+  ganhoMes: number;
+};
+
+/** O que acontece com um prato se ele passar a custar `newPrice`. Não prevê queda de venda: só faz a conta com a quantidade do mês. */
+export function simulatePrice(dish: { cost: number; price: number; sold: number }, newPrice: number): PriceSimulation {
+  const sobra = newPrice - dish.cost;
+  const lucroMes = sobra * dish.sold;
+  return { price: newPrice, sobra, marginPct: newPrice > 0 ? sobra / newPrice : null, lucroMes, ganhoMes: lucroMes - (dish.price - dish.cost) * dish.sold };
+}
