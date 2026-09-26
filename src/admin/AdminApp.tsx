@@ -13,6 +13,9 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
+import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee";
+import type { DeliveryFeeConfig } from "../deliveryFeeRule";
+import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
 import { isManualOpenEffective } from "../storeHours";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
@@ -194,6 +197,8 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
   const [orderCostRates, setOrderCostRates] = useState<OrderCostRates>(DEFAULT_ORDER_COST_RATES);
   useEffect(() => subscribeOrderCostRates(setOrderCostRates), []);
+  const [deliveryFeeConfig, setDeliveryFeeConfigState] = useState<DeliveryFeeConfig | null>(null);
+  useEffect(() => subscribeDeliveryFeeConfig(setDeliveryFeeConfigState), []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   useEffect(() => subscribeStockMovements(setStockMovements), []);
   const handleConnectPrinter = () => {
@@ -842,6 +847,7 @@ function Dashboard({ user }: { user: User }) {
         ) : ordersLoadingNotice)}
 
         {activeTab === "cardapio" && <>
+        <DeliveryFeePanel config={deliveryFeeConfig} onSave={setDeliveryFeeConfig} />
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
