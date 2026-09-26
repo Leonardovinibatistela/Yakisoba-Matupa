@@ -6,7 +6,7 @@ import type { FixedExpense, FixedExpenseHistoryEntry } from "./fixedExpenses";
 import type { PaymentFeeRates } from "./paymentFees";
 import type { OrderCostRates } from "./orderCosts";
 import EditableCell from "./EditableCell";
-import { analyzeDishes, breakEven, ingredientsWithoutCost, paymentBreakdown, simulatePrice, soldByItem, suggestPrice, summarizeOrders, type BreakEven, type CatalogItem, type DishRow, type DishWithoutRecipe, type PeriodSummary } from "./financeiroMath";
+import { analyzeDishes, breakEven, deliverySplit, ingredientsWithoutCost, paymentBreakdown, simulatePrice, soldByItem, suggestPrice, summarizeOrders, type BreakEven, type CatalogItem, type DishRow, type DishWithoutRecipe, type PeriodSummary } from "./financeiroMath";
 import { SAVE_FAILED, parseNumber, toDraft, withTimeout } from "./stockFormat";
 
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -128,6 +128,46 @@ function PaymentTable({ rows }: { rows: ReturnType<typeof paymentBreakdown> }) {
               <td className="border border-slate-300 px-3 py-2 text-right font-bold tabular-nums">{money(row.bruto - row.fee)}</td>
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Entrega x retirada: quantos pedidos hoje, na semana e no mês, e quanto vendeu no mês em cada um. "Não informado" só aparece se existir pedido sem o tipo marcado. */
+function DeliveryTable({ today, week, month }: { today: OrderRecord[]; week: OrderRecord[]; month: OrderRecord[] }) {
+  const split = { today: deliverySplit(today), week: deliverySplit(week), month: deliverySplit(month) };
+  const rows = [
+    { kind: "entrega" as const, label: "Entrega" },
+    { kind: "retirada" as const, label: "Retirada no local" },
+    ...(split.today.semTipo.orders + split.week.semTipo.orders + split.month.semTipo.orders > 0 ? [{ kind: "semTipo" as const, label: "Não informado" }] : []),
+  ];
+  const cell = "border border-slate-300 px-3 py-2 text-right tabular-nums";
+  return (
+    <div className="mt-4 overflow-x-auto rounded-md border border-slate-300 bg-white text-[13px] text-slate-800 shadow-sm">
+      <table className="w-full min-w-[520px] border-collapse">
+        <thead><tr className="bg-slate-100 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">
+          <th className="border border-slate-300 px-3 py-2">Tipo</th><th className="border border-slate-300 px-3 py-2 text-right">Hoje</th><th className="border border-slate-300 px-3 py-2 text-right">Essa semana</th><th className="border border-slate-300 px-3 py-2 text-right">Neste mês</th><th className="border border-slate-300 px-3 py-2 text-right">Vendas no mês</th><th className="border border-slate-300 px-3 py-2 text-right">% do mês</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(({ kind, label }) => (
+            <tr key={kind}>
+              <td className="border border-slate-300 px-3 py-2 font-semibold">{label}</td>
+              <td className={cell}>{split.today[kind].orders}</td>
+              <td className={cell}>{split.week[kind].orders}</td>
+              <td className={cell}>{split.month[kind].orders}</td>
+              <td className={cell}>{money(split.month[kind].bruto)}</td>
+              <td className={`${cell} text-slate-600`}>{month.length > 0 ? pctText(split.month[kind].orders / month.length) : "—"}</td>
+            </tr>
+          ))}
+          <tr className="bg-slate-50 font-bold">
+            <td className="border border-slate-300 px-3 py-2">Total</td>
+            <td className={cell}>{today.length}</td>
+            <td className={cell}>{week.length}</td>
+            <td className={cell}>{month.length}</td>
+            <td className={cell}>{money(month.reduce((total, order) => total + order.total, 0))}</td>
+            <td className={cell}>{month.length > 0 ? "100%" : "—"}</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -466,6 +506,10 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
 
       <Card eyebrow="Formas de pagamento" title="Quanto entrou em cada uma neste mês">
         {month.orders === 0 ? <p className="mt-4 rounded-xl border border-white/10 p-4 text-sm text-white/50">Sem pedidos no mês ainda.</p> : <PaymentTable rows={payments} />}
+      </Card>
+
+      <Card eyebrow="Entrega ou retirada" title="Quantos pedidos foram por entrega e quantos por retirada">
+        {month.orders === 0 ? <p className="mt-4 rounded-xl border border-white/10 p-4 text-sm text-white/50">Sem pedidos no mês ainda.</p> : <DeliveryTable today={todayOrders} week={weekOrders} month={monthOrders} />}
       </Card>
 
       <Card eyebrow="Qual prato dá mais lucro" title="Lucro por prato (neste mês)">

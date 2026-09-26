@@ -125,6 +125,21 @@ export function paymentBreakdown(orders: OrderRecord[], rates: PaymentFeeRates):
   }).filter((row) => row.orders > 0 || row.method !== "outro");
 }
 
+export type DeliveryKind = "entrega" | "retirada" | "semTipo";
+export type DeliveryCounts = { orders: number; bruto: number };
+export type DeliverySplit = Record<DeliveryKind, DeliveryCounts>;
+
+/** Quantos pedidos (e quanto de venda) foram por entrega, por retirada ou sem o tipo marcado (pedido antigo ou digitado à mão). */
+export function deliverySplit(orders: OrderRecord[]): DeliverySplit {
+  const split: DeliverySplit = { entrega: { orders: 0, bruto: 0 }, retirada: { orders: 0, bruto: 0 }, semTipo: { orders: 0, bruto: 0 } };
+  orders.forEach((order) => {
+    const kind: DeliveryKind = order.deliveryType === "entrega" ? "entrega" : order.deliveryType === "retirada" ? "retirada" : "semTipo";
+    split[kind].orders += 1;
+    split[kind].bruto += order.total;
+  });
+  return split;
+}
+
 /** Quantas unidades de cada prato/adicional/combo foram vendidas (pelo id da ficha técnica, então "medio-frango#abc" conta como "medio-frango"). */
 export function soldByItem(orders: OrderRecord[]): Map<string, number> {
   const sold = new Map<string, number>();
