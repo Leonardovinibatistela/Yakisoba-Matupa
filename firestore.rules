@@ -80,7 +80,7 @@ service cloud.firestore {
     // ficha técnica e os custos consegue copiar a receita e saber a margem.
     // Escrever é sempre só o admin.
     match /menuStatus/{document} {
-      allow read: if document in ['soldOut', 'priceOverrides', 'nameOverrides', 'descriptionOverrides', 'photoOverrides', 'hiddenItems', 'manualOpen', 'emergencyPause', 'deliveryFee']
+      allow read: if document in ['soldOut', 'priceOverrides', 'nameOverrides', 'descriptionOverrides', 'photoOverrides', 'hiddenItems', 'manualOpen', 'manualClose', 'emergencyPause', 'deliveryFee']
         || isAdmin();
       allow write: if isAdmin();
     }

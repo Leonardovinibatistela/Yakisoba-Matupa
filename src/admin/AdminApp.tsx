@@ -13,11 +13,14 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
+import { setManualClose, subscribeManualClose } from "../manualClose";
+import type { ManualCloseInfo } from "../manualCloseRule";
 import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee";
 import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
-import { isManualOpenEffective } from "../storeHours";
+import { isManualCloseActive } from "../manualCloseRule";
+import { computeStoreOpen, isManualOpenEffective, isStoreOpen } from "../storeHours";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
@@ -271,6 +274,20 @@ function Dashboard({ user }: { user: User }) {
     setTogglingManualOpen(true);
     setManualOpen(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualOpen(false));
   };
+
+  const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
+  const [togglingManualClose, setTogglingManualClose] = useState(false);
+  useEffect(() => subscribeManualClose(setManualCloseInfo), []);
+  const manualCloseOn = isManualCloseActive(manualCloseInfo, new Date());
+  const handleToggleManualClose = () => {
+    const next = !manualCloseOn;
+    if (next && !window.confirm("Fechar o site por hoje? Ninguém consegue pedir, mesmo dentro do horário normal. Volta sozinho amanhã, sem precisar lembrar de desligar.")) return;
+    setTogglingManualClose(true);
+    setManualClose(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualClose(false));
+  };
+  // Status ao vivo (site aberto ou fechado AGORA, juntando agenda + abertura antecipada + fechamento manual) —
+  // reavalia junto com clockTick, então também atualiza sozinho na hora certa de abrir/fechar.
+  const siteOpenNow = computeStoreOpen(isStoreOpen(new Date()), manualOpenInfo, manualCloseInfo, new Date());
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
@@ -637,8 +654,12 @@ function Dashboard({ user }: { user: User }) {
             <h1 className="mt-1 font-display text-3xl font-extrabold tracking-[-.045em]">Olá, {user.email}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${siteOpenNow ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>{siteOpenNow ? "🟢 Site aberto agora" : "🔴 Site fechado agora"}</span>
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingPause ? "…" : emergencyPaused ? `⏸️ Pausado${pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — reativar` : "⏸️ Pausar pedidos"}
+            </button>
+            <button type="button" onClick={handleToggleManualClose} disabled={togglingManualClose} title="Força o site fechado por hoje, mesmo dentro do horário normal (loja de mudança, feriado, imprevisto). Volta sozinho amanhã — não precisa lembrar de desligar." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualCloseOn ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
+              {togglingManualClose ? "…" : manualCloseOn ? "🔴 Fechado hoje — reabrir" : "🔒 Fechar por hoje"}
             </button>
             <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido fora do horário, só por hoje: desliga sozinho à meia-noite e nunca passa do horário oficial de fechar (${STORE_HOURS_LABEL_ADMIN}) — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
@@ -648,6 +669,7 @@ function Dashboard({ user }: { user: User }) {
         </div>
 
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
+        {manualCloseOn && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">🔒 O site está FECHADO hoje (fechamento manual) — ninguém consegue pedir, mesmo dentro do horário normal. Volta sozinho amanhã. Clique em "Fechado hoje — reabrir" (no topo) pra abrir de novo hoje.</div>}
 
         <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
           {ADMIN_TABS.filter((tab) => !DEVELOPER_TAB_IDS.includes(tab.id) || isDeveloper).map((tab) => (

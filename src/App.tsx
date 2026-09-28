@@ -12,7 +12,9 @@ import { subscribeHiddenItems } from "./hiddenItems";
 import { subscribeEmergencyPause } from "./emergencyPause";
 import { subscribeManualOpen } from "./manualOpen";
 import type { ManualOpenInfo } from "./manualOpenRule";
-import { STORE_HOURS_LABEL, isManualOpenEffective, isStoreOpen } from "./storeHours";
+import { subscribeManualClose } from "./manualClose";
+import { isManualCloseActive, type ManualCloseInfo } from "./manualCloseRule";
+import { STORE_HOURS_LABEL, computeStoreOpen, isStoreOpen } from "./storeHours";
 import { subscribeDeliveryFeeConfig } from "./deliveryFee";
 import { LEGACY_FLAT_FEE, computeDeliveryFee, describeDeliveryRule, estimateRoadKm, flatDeliveryFee, isBeyondMaxKm, type DeliveryFeeConfig } from "./deliveryFeeRule";
 
@@ -252,6 +254,8 @@ export default function App() {
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
   useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
+  const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
+  useEffect(() => subscribeManualClose(setManualCloseInfo), []);
   const [scheduleState, setScheduleState] = useState(() => ({ open: isStoreOpen() }));
   useEffect(() => {
     const interval = setInterval(() => setScheduleState({ open: isStoreOpen() }), 30000);
@@ -260,7 +264,8 @@ export default function App() {
   // Abertura antecipada: (1) nunca vale depois do horário oficial de fechar e (2) só vale no dia em que
   // foi ligada (expira à meia-noite) — assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
   // scheduleState troca a cada 30s, então isso é reavaliado sozinho na virada do dia.
-  const storeOpen = scheduleState.open || isManualOpenEffective(manualOpenInfo, new Date());
+  const manualCloseActive = isManualCloseActive(manualCloseInfo, new Date());
+  const storeOpen = computeStoreOpen(scheduleState.open, manualOpenInfo, manualCloseInfo, new Date());
   const [notes, setNotes] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -407,7 +412,9 @@ export default function App() {
   };
   return <DeliveryQuoteContext.Provider value={deliveryQuote}><div className="min-h-screen overflow-x-hidden bg-[#100d0c] text-[#f7f3ef] selection:bg-[#ff5a19] selection:text-white">
     <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.07] bg-[#100d0c]/75 backdrop-blur-xl"><nav className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 lg:px-8" aria-label="Navegação principal"><Logo /><div className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex"><a className="transition hover:text-white" href="#menu">Cardápio</a><a className="transition hover:text-white" href="#sobre">A experiência</a><a className="transition hover:text-white" href="#duvidas">Dúvidas</a></div><button type="button" onClick={() => setCartOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-[#ff6b32]/30 bg-[#ff5a19]/10 px-3.5 py-2 text-xs font-bold text-[#ff8b60] transition hover:border-[#ff6b32]/65 hover:bg-[#ff5a19]/20" aria-label="Abrir meu pedido"><CartIcon className="h-4 w-4" /><span className="hidden sm:inline">Meu Pedido</span>{totalQuantity > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-[#ff5a19] px-1 text-[10px] text-white">{totalQuantity}</span>}</button></nav></header>
-    {emergencyPaused ? <div className="relative z-30 mt-[72px] bg-[#c02626] px-5 py-3 text-center text-sm font-bold text-white">⏸️ Pedidos pausados no momento — voltamos já já! Dá pra ver o cardápio, mas o envio está temporariamente desligado.</div> : !storeOpen && <div className="relative z-30 mt-[72px] bg-[#ff5a19] px-5 py-3 text-center text-sm font-bold text-white">🕒 Estamos fechados agora — funcionamos {STORE_HOURS_LABEL}. Dá pra ver o cardápio, mas os pedidos só abrem no nosso horário.</div>}
+    {emergencyPaused ? <div className="relative z-30 mt-[72px] bg-[#c02626] px-5 py-3 text-center text-sm font-bold text-white">⏸️ Pedidos pausados no momento — voltamos já já! Dá pra ver o cardápio, mas o envio está temporariamente desligado.</div>
+      : manualCloseActive ? <div className="relative z-30 mt-[72px] bg-[#c02626] px-5 py-3 text-center text-sm font-bold text-white">🔒 Fechados hoje — sem pedidos hoje. Dá pra ver o cardápio, mas voltamos amanhã, {STORE_HOURS_LABEL}.</div>
+      : !storeOpen && <div className="relative z-30 mt-[72px] bg-[#ff5a19] px-5 py-3 text-center text-sm font-bold text-white">🕒 Estamos fechados agora — funcionamos {STORE_HOURS_LABEL}. Dá pra ver o cardápio, mas os pedidos só abrem no nosso horário.</div>}
     <main>
       <section id="inicio" className="relative isolate flex min-h-[780px] items-end overflow-hidden pt-[72px] sm:min-h-[790px] lg:min-h-[820px]" aria-labelledby="hero-title"><img src="sooba-hero.jpg" alt="Prato de yakisoba e seleção de sushi (uramaki, sashimi de salmão) do Sooba sobre mesa escura" className="absolute inset-0 -z-20 h-full w-full object-cover object-[62%_center] motion-safe:animate-[hero-in_1.2s_ease-out_both]" /><div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(16,13,12,.96)_0%,rgba(16,13,12,.80)_34%,rgba(16,13,12,.24)_75%),linear-gradient(0deg,rgba(16,13,12,.94)_0%,transparent_49%)]" /><div className="hero-glow absolute -left-28 top-36 -z-10 h-72 w-72 rounded-full bg-[#ff4d12]/20 blur-[105px]" /><div className="mx-auto w-full max-w-7xl px-5 pb-16 pt-24 sm:pb-20 lg:px-8 lg:pb-24"><div className="max-w-[655px]"><p className="reveal-up text-xs font-bold uppercase tracking-[0.23em] text-[#ff7c50]">Comida japonesa: sushi e yakisoba delivery em Matupá e Peixoto de Azevedo</p><div className="reveal-up delay-1 mt-4 overflow-hidden"><p className="font-display text-[clamp(4.2rem,11vw,8.8rem)] font-black leading-[.76] tracking-[-0.105em] text-white">SOOBA<span className="text-[#ff5a19]">.</span></p></div><h1 id="hero-title" className="reveal-up delay-2 mt-7 max-w-xl font-display text-[clamp(2.25rem,4.3vw,4.4rem)] font-extrabold leading-[.95] tracking-[-0.07em] text-[#fff9f3]">Seu delivery favorito de sushi e yakisoba.</h1><p className="reveal-up delay-3 mt-5 max-w-md text-base leading-relaxed text-white/70 sm:text-lg">Uramaki, sashimi de salmão e yakisoba, prontos pra pedir. A gente prepara em Matupá, você confirma pelo WhatsApp.</p><div className="reveal-up delay-4 mt-8 flex flex-wrap gap-3"><a href="#menu" className="group inline-flex items-center gap-2 rounded-full bg-[#ff5a19] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_35px_rgba(255,90,25,.24)] transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]">Ver cardápio <ArrowIcon className="h-4 w-4 transition group-hover:translate-x-0.5" /></a><a href="https://wa.me/556692026783" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.07] px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-white/[0.14]"><WhatsAppIcon className="h-4 w-4" /> Pedir no WhatsApp</a></div></div></div><a href="#menu" className="absolute bottom-7 right-6 hidden items-center gap-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/60 lg:flex"><span className="h-px w-9 bg-white/30" /> Explore o cardápio</a></section>
       <section className="border-y border-white/[0.08] bg-[#171211] py-6" aria-label="Destaques do Sooba"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-10 gap-y-3 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 lg:px-8"><span className="text-white/85">Sushi com presença</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Yakisoba feito na hora</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Pedido direto no WhatsApp</span></div></section>

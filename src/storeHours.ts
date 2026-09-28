@@ -1,6 +1,7 @@
 // Só regra de horário — nada de tela nem de Firebase aqui. Usado pelo site (App.tsx) e pelo painel (AdminApp.tsx),
 // pra os dois sempre concordarem sobre "está aberto?".
 import { isManualOpenActive, type ManualOpenInfo } from "./manualOpenRule";
+import { isManualCloseActive, type ManualCloseInfo } from "./manualCloseRule";
 
 // Horário de funcionamento: seg-sex 18:30-22h, sáb-dom 18:30-23h.
 export const STORE_HOURS_LABEL = "Seg a Sex 18:30–22h · Sáb e Dom 18:30–23h";
@@ -32,3 +33,13 @@ export function isBeforeClosingTime(date = new Date()): boolean {
  * o site fecha e o botão do painel volta a "Abrir agora".
  */
 export const isManualOpenEffective = (info: ManualOpenInfo, now: Date): boolean => isManualOpenActive(info, now) && isBeforeClosingTime(now);
+
+/**
+ * Se está aberto AGORA, juntando tudo: o fechamento manual ("Fechar por hoje") sempre vence — ignora a
+ * agenda normal e a abertura antecipada, porque foi um pedido explícito do admin pra não abrir hoje.
+ * Sem ele, vale o de sempre: agenda normal OU abertura antecipada ainda dentro do horário de hoje.
+ */
+export function computeStoreOpen(scheduleOpen: boolean, manualOpenInfo: ManualOpenInfo, manualCloseInfo: ManualCloseInfo, now: Date): boolean {
+  if (isManualCloseActive(manualCloseInfo, now)) return false;
+  return scheduleOpen || isManualOpenEffective(manualOpenInfo, now);
+}
