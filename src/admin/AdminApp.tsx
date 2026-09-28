@@ -265,8 +265,20 @@ function Dashboard({ user }: { user: User }) {
   // pra quem só olha o painel enxergar que o site fechou. Mesma regra do site (storeHours.ts).
   const [, setClockTick] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setClockTick((tick) => tick + 1), 30000);
-    return () => clearInterval(timer);
+    const tick = () => setClockTick((current) => current + 1);
+    const timer = setInterval(tick, 30000);
+    // Celular/tablet com a tela apagada pausa o setInterval (economia de bateria) — o painel que fica ligado
+    // a noite inteira na loja só reavaliava de novo depois de tocar na tela E esperar a próxima batida de
+    // 30s, dando a impressão de "site aberto" por mais tempo do que realmente estava. Recheca na hora em
+    // que a tela volta a ficar visível ou em foco, em vez de esperar.
+    const onVisible = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", tick);
+    };
   }, []);
   const manualOpen = isManualOpenEffective(manualOpenInfo, new Date());
   const handleToggleManualOpen = () => {

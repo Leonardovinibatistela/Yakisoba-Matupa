@@ -258,8 +258,19 @@ export default function App() {
   useEffect(() => subscribeManualClose(setManualCloseInfo), []);
   const [scheduleState, setScheduleState] = useState(() => ({ open: isStoreOpen() }));
   useEffect(() => {
-    const interval = setInterval(() => setScheduleState({ open: isStoreOpen() }), 30000);
-    return () => clearInterval(interval);
+    const recheck = () => setScheduleState({ open: isStoreOpen() });
+    const interval = setInterval(recheck, 30000);
+    // Celular com a tela apagada/dormindo pausa o setInterval (economia de bateria dos navegadores) — sem
+    // isso, quem deixa uma aba aberta a noite inteira só vê o site "abrir"/"fechar" de novo depois de tocar
+    // na tela, e só na próxima batida de 30s. Recheca na hora em que a aba volta a ficar visível ou em foco.
+    const onVisible = () => { if (document.visibilityState === "visible") recheck(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", recheck);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", recheck);
+    };
   }, []);
   // Abertura antecipada: (1) nunca vale depois do horário oficial de fechar e (2) só vale no dia em que
   // foi ligada (expira à meia-noite) — assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
