@@ -19,8 +19,9 @@ export const LEGACY_FLAT_FEE = 7;
 /** Mesmo teto que as regras do Firestore aceitam num pedido (firestore.rules). */
 export const MAX_DELIVERY_FEE = 100;
 
-/** Onde fica a loja (Rua 4, nº 916 A, Cidade Alta, Matupá/MT). */
-export const STORE_COORDS = { lat: -10.168631, lng: -54.91407 };
+/** Onde fica a loja (Rua 13, nº 1616, Bairro Centro, Matupá/MT — mudou de endereço em 29/09/2026;
+ * pino real mandado pelo WhatsApp de quem está no local, não é mais aproximação). */
+export const STORE_COORDS = { lat: -10.170444, lng: -54.93338 };
 /** A distância do GPS é em linha reta; a estrada é sempre mais longa. Esse fator compensa. */
 export const ROAD_FACTOR = 1.3;
 
