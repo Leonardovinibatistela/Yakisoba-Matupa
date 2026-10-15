@@ -40,22 +40,27 @@ import ImportPanel from "./ImportPanel";
 import { fetchBackup, fetchOrders } from "./backupData";
 import { isBackupOverdue } from "./backupFormat";
 import ShoppingList from "./ShoppingList";
+import ManualOrderPanel from "./ManualOrderPanel";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
+type AdminTab = "visao" | "pedido" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
 
 // As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
 // site continua sendo quem está nas regras do Firebase). Em minúsculas, igual o Firebase devolve o e-mail.
 const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
-const DEVELOPER_TAB_IDS: AdminTab[] = ["backup", "importar"];
+// A aba "Pedido manual" está em teste: enquanto for false, só quem cuida do sistema enxerga. Pra liberar pra equipe
+// da loja, é só trocar pra true.
+const MANUAL_ORDER_TAB_FOR_STAFF = false;
+const DEVELOPER_TAB_IDS: AdminTab[] = MANUAL_ORDER_TAB_FOR_STAFF ? ["backup", "importar"] : ["backup", "importar", "pedido"];
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
+  { id: "pedido", label: "Pedido manual" },
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
   { id: "estoque", label: "Estoque" },
@@ -844,6 +849,8 @@ function Dashboard({ user }: { user: User }) {
         </div>
 
         </> : ordersLoadingNotice)}
+
+        {activeTab === "pedido" && (isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF) && <ManualOrderPanel customItems={customItems} dailyCombos={dailyCombos} soldOutIds={soldOutIds} hiddenIds={hiddenIds} priceOverrides={priceOverrides} nameOverrides={nameOverrides} deliveryFeeConfig={deliveryFeeConfig} />}
 
         {activeTab === "backup" && isDeveloper && <BackupPanel lastBackupAt={lastBackupAt} loadBackup={fetchBackup} loadOrders={fetchOrders} onBackupDone={setLastBackupAt} />}
 
