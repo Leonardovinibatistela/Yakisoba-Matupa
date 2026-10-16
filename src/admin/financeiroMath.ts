@@ -116,9 +116,9 @@ export function breakEven(month: PeriodSummary, fixedTotal: number, now: Date): 
 export type PaymentRow = { method: PaymentMethod | "outro"; orders: number; bruto: number; rate: number; fee: number };
 
 export function paymentBreakdown(orders: OrderRecord[], rates: PaymentFeeRates): PaymentRow[] {
-  const methods: (PaymentMethod | "outro")[] = ["pix", "cartao", "dinheiro", "outro"];
+  const methods: (PaymentMethod | "outro")[] = ["pix", "cartao", "debito", "dinheiro", "outro"];
   return methods.map((method) => {
-    const group = orders.filter((order) => (method === "outro" ? !["pix", "cartao", "dinheiro"].includes(order.paymentMethod) : order.paymentMethod === method));
+    const group = orders.filter((order) => (method === "outro" ? !["pix", "cartao", "debito", "dinheiro"].includes(order.paymentMethod) : order.paymentMethod === method));
     const bruto = group.reduce((sum, order) => sum + order.total, 0);
     const rate = method === "outro" ? 0 : rates[method] ?? 0;
     return { method, orders: group.length, bruto, rate, fee: bruto * rate };

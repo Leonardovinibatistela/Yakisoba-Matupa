@@ -11,7 +11,7 @@ import { SAVE_FAILED, parseNumber, toDraft, withTimeout } from "./stockFormat";
 
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pctText = (value: number | null) => (value === null ? "—" : `${Math.round(value * 100)}%`);
-const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro", outro: "Sem forma informada" };
+const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão de crédito", debito: "Cartão de débito", dinheiro: "Dinheiro", outro: "Sem forma informada" };
 const compareText = (a: string, b: string) => a.localeCompare(b, "pt-BR", { sensitivity: "base" });
 const toneFor = (value: number) => (value < 0 ? "text-red-400" : "text-emerald-400");
 const marginTone = (value: number | null) => (value === null ? "text-slate-400" : value < 0.3 ? "text-red-600" : value < 0.5 ? "text-amber-700" : "text-emerald-700");
@@ -337,17 +337,17 @@ function DishSheet({ rows, withoutRecipe }: { rows: DishRow[]; withoutRecipe: Di
 
 function PaymentFeesEditor({ rates, onSave, onSaved }: { rates: PaymentFeeRates; onSave: (rates: PaymentFeeRates) => Promise<void>; onSaved: (message: string) => void }) {
   const pctDraft = (value: number) => String(Number((value * 100).toFixed(4))).replace(".", ",");
-  const [drafts, setDrafts] = useState({ pix: pctDraft(rates.pix), cartao: pctDraft(rates.cartao), dinheiro: pctDraft(rates.dinheiro) });
+  const [drafts, setDrafts] = useState({ pix: pctDraft(rates.pix), cartao: pctDraft(rates.cartao), debito: pctDraft(rates.debito), dinheiro: pctDraft(rates.dinheiro) });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const parsePct = (raw: string) => (raw.trim() === "" ? 0 : parseNumber(raw));
   const invalid = (Object.keys(drafts) as (keyof PaymentFeeRates)[]).some((method) => { const value = parsePct(drafts[method]); return Number.isNaN(value) || value < 0 || value > 100; });
-  const cardExample = 100 * (parsePct(drafts.cartao) / 100);
+  const cardExamples = (["cartao", "debito"] as const).filter((method) => parsePct(drafts[method]) > 0).map((method) => ({ method, fee: 100 * (parsePct(drafts[method]) / 100) }));
   const handleSave = () => {
     if (invalid) { setError("Cada taxa tem que ser um número de 0 a 100."); return; }
     setError(null);
     setSaving(true);
-    withTimeout(onSave({ pix: parsePct(drafts.pix) / 100, cartao: parsePct(drafts.cartao) / 100, dinheiro: parsePct(drafts.dinheiro) / 100 }))
+    withTimeout(onSave({ pix: parsePct(drafts.pix) / 100, cartao: parsePct(drafts.cartao) / 100, debito: parsePct(drafts.debito) / 100, dinheiro: parsePct(drafts.dinheiro) / 100 }))
       .then(() => onSaved("Taxas de pagamento salvas"))
       .catch(() => setError(SAVE_FAILED))
       .finally(() => setSaving(false));
@@ -356,7 +356,7 @@ function PaymentFeesEditor({ rates, onSave, onSaved }: { rates: PaymentFeeRates;
     <Card eyebrow="Taxa de pagamento" title="Quanto a maquininha/plataforma come de cada venda">
       <p className="mt-1.5 text-sm text-white/50">Em porcentagem do valor do pedido. Deixa 0 pra forma de pagamento que não tem taxa (ex.: Pix, dinheiro).</p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
-        {(["pix", "cartao", "dinheiro"] as const).map((method) => (
+        {(["pix", "cartao", "debito", "dinheiro"] as const).map((method) => (
           <div key={method}>
             <label htmlFor={`fee-${method}`} className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{PAYMENT_LABELS[method]} (%)</label>
             <input id={`fee-${method}`} type="text" inputMode="decimal" value={drafts[method]} onChange={(event) => { setDrafts((current) => ({ ...current, [method]: event.target.value })); setError(null); }} className="mt-1.5 min-h-[44px] w-28 rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-[16px] text-white outline-none focus:border-[#ff6b32] md:min-h-0 md:text-sm" />
@@ -364,7 +364,7 @@ function PaymentFeesEditor({ rates, onSave, onSaved }: { rates: PaymentFeeRates;
         ))}
         <button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] rounded-full bg-[#ff5a19] px-5 py-2 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 md:min-h-0">{saving ? "Salvando…" : "Salvar taxas"}</button>
       </div>
-      {!invalid && parsePct(drafts.cartao) > 0 && <p className="mt-2 text-xs text-white/45">Exemplo: numa venda de R$ 100,00 no cartão, a taxa é {money(cardExample)}.</p>}
+      {!invalid && cardExamples.length > 0 && <p className="mt-2 text-xs text-white/45">Exemplo: numa venda de R$ 100,00 {cardExamples.map((example, index) => <span key={example.method}>{index > 0 ? "; " : ""}no {example.method === "cartao" ? "crédito" : "débito"} a taxa é {money(example.fee)}</span>)}.</p>}
       {error && <p role="alert" className="mt-2 text-xs font-semibold text-red-400">{error}</p>}
     </Card>
   );
@@ -437,7 +437,7 @@ export default function FinanceiroPanel({ todayOrders, weekOrders, monthOrders, 
   const { withRecipe, withoutRecipe } = analyzeDishes(itemCatalog, recipes, ingredients, soldByItem(monthOrders));
   const dishesTotal = withRecipe.length + withoutRecipe.length;
   const noCostIngredients = ingredientsWithoutCost(ingredients, recipes);
-  const allRatesZero = paymentFeeRates.pix === 0 && paymentFeeRates.cartao === 0 && paymentFeeRates.dinheiro === 0;
+  const allRatesZero = paymentFeeRates.pix === 0 && paymentFeeRates.cartao === 0 && paymentFeeRates.debito === 0 && paymentFeeRates.dinheiro === 0;
   const noOrderCosts = orderCostRates.packaging === 0 && orderCostRates.courier === 0;
   const costOk = month.orders === 0 || month.completos === month.orders;
   const allGood = costOk && withoutRecipe.length === 0 && noCostIngredients.length === 0 && fixedExpenses.length > 0;
