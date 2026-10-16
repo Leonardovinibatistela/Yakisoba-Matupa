@@ -53,9 +53,9 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cr�
 // As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
 // site continua sendo quem está nas regras do Firebase). Em minúsculas, igual o Firebase devolve o e-mail.
 const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
-// A aba "Pedido manual" está em teste: enquanto for false, só quem cuida do sistema enxerga. Pra liberar pra equipe
-// da loja, é só trocar pra true.
-const MANUAL_ORDER_TAB_FOR_STAFF = false;
+// A aba "Pedido manual" está liberada pra equipe da loja (true). Pra voltar a mostrar só pra quem cuida do sistema, é só
+// trocar pra false.
+const MANUAL_ORDER_TAB_FOR_STAFF = true;
 const DEVELOPER_TAB_IDS: AdminTab[] = MANUAL_ORDER_TAB_FOR_STAFF ? ["backup", "importar"] : ["backup", "importar", "pedido"];
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
