@@ -11,7 +11,7 @@ import { SAVE_FAILED, parseNumber, toDraft, withTimeout } from "./stockFormat";
 
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pctText = (value: number | null) => (value === null ? "—" : `${Math.round(value * 100)}%`);
-const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão de crédito", debito: "Cartão de débito", dinheiro: "Dinheiro", outro: "Sem forma informada" };
+const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro", outro: "Sem forma informada" };
 const compareText = (a: string, b: string) => a.localeCompare(b, "pt-BR", { sensitivity: "base" });
 const toneFor = (value: number) => (value < 0 ? "text-red-400" : "text-emerald-400");
 const marginTone = (value: number | null) => (value === null ? "text-slate-400" : value < 0.3 ? "text-red-600" : value < 0.5 ? "text-amber-700" : "text-emerald-700");
