@@ -48,7 +48,7 @@ const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
 type AdminTab = "visao" | "pedido" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
-const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
+const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro" };
 
 // As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
 // site continua sendo quem está nas regras do Firebase). Em minúsculas, igual o Firebase devolve o e-mail.
@@ -201,7 +201,7 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeFixedExpenses(setFixedExpenses), []);
   const [fixedExpenseHistory, setFixedExpenseHistory] = useState<FixedExpenseHistoryEntry[]>([]);
   useEffect(() => subscribeFixedExpenseHistory(setFixedExpenseHistory), []);
-  const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, dinheiro: 0 });
+  const [paymentFeeRates, setPaymentFeeRates] = useState<PaymentFeeRates>({ pix: 0, cartao: 0, debito: 0, dinheiro: 0 });
   useEffect(() => subscribePaymentFeeRates(setPaymentFeeRates), []);
   const [orderCostRates, setOrderCostRates] = useState<OrderCostRates>(DEFAULT_ORDER_COST_RATES);
   useEffect(() => subscribeOrderCostRates(setOrderCostRates), []);

@@ -113,7 +113,7 @@ function row(left: string, right: string): number[] {
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartao", dinheiro: "Dinheiro" };
+const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Credito", debito: "Debito", dinheiro: "Dinheiro" };
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora. */
 export function buildReceiptBytes(order: OrderRecord): Uint8Array {

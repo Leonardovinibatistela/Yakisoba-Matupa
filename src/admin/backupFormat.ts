@@ -58,7 +58,7 @@ const money = (value: unknown): string => (typeof value === "number" && Number.i
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 
 const DELIVERY_LABELS: Record<string, string> = { entrega: "Entrega", retirada: "Retirada" };
-const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro" };
+const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro" };
 export const ORDER_CSV_HEADERS = ["Pedido", "Data", "Hora", "Cliente", "Telefone", "Tipo", "Endereço", "Pagamento", "Itens", "Subtotal", "Taxa de entrega", "Total", "Custo dos ingredientes", "Observação"];
 
 /** Todos os pedidos numa planilha (abre direto no Excel, com acento certo), do mais antigo pro mais novo. */

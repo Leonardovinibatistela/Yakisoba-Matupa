@@ -13,7 +13,7 @@ export type OrderRecord = {
   deliveryFee: number;
   notes: string;
   createdAt: Date;
-  paymentMethod: "pix" | "cartao" | "dinheiro" | "";
+  paymentMethod: "pix" | "cartao" | "debito" | "dinheiro" | "";
   deliveryType: "retirada" | "entrega" | "";
   location: string;
   stockDeducted: boolean;

@@ -29,7 +29,7 @@ export const MANUAL_SOURCES: { id: ManualSource; label: string }[] = [
 ];
 
 export type Cutlery = "hashi" | "garfo" | "nenhum";
-export type PaymentMethod = "pix" | "cartao" | "dinheiro";
+export type PaymentMethod = "pix" | "cartao" | "debito" | "dinheiro"; // cartao = crédito
 
 export const round2 = (value: number): number => Math.round(value * 100) / 100;
 

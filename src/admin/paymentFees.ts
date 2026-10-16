@@ -1,10 +1,11 @@
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
-export type PaymentMethod = "pix" | "cartao" | "dinheiro";
+// "cartao" é o cartão de CRÉDITO (era o único cartão antes do débito existir — pedidos antigos continuam valendo como crédito).
+export type PaymentMethod = "pix" | "cartao" | "debito" | "dinheiro";
 export type PaymentFeeRates = Record<PaymentMethod, number>;
 
-const DEFAULT_RATES: PaymentFeeRates = { pix: 0, cartao: 0, dinheiro: 0 };
+const DEFAULT_RATES: PaymentFeeRates = { pix: 0, cartao: 0, debito: 0, dinheiro: 0 };
 const paymentFeesRef = doc(db, "menuStatus", "paymentFees");
 
 export function subscribePaymentFeeRates(onUpdate: (rates: PaymentFeeRates) => void, onError?: (error: unknown) => void): () => void {

@@ -17,7 +17,7 @@ const pillBase = "min-h-[40px] rounded-full border px-3.5 py-2 text-xs font-bold
 const pillOn = "border-[#ff5a19] bg-[#ff5a19] text-white";
 const pillOff = "border-white/15 text-white/60 hover:border-white/35 hover:text-white";
 
-const PAYMENTS: { id: PaymentMethod; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Cartão" }, { id: "dinheiro", label: "Dinheiro" }];
+const PAYMENTS: { id: PaymentMethod; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Crédito" }, { id: "debito", label: "Débito" }, { id: "dinheiro", label: "Dinheiro" }];
 const CUTLERY: { id: Cutlery; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não precisa" }];
 
 type Props = {

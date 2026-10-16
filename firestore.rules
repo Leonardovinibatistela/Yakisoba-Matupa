@@ -54,7 +54,7 @@ service cloud.firestore {
         && request.resource.data.total <= 5000
         && request.resource.data.deliveryType in ['retirada', 'entrega']
         && request.resource.data.cutlery in ['hashi', 'garfo', 'nenhum']
-        && request.resource.data.paymentMethod in ['pix', 'cartao', 'dinheiro']
+        && request.resource.data.paymentMethod in ['pix', 'cartao', 'debito', 'dinheiro']
         && request.resource.data.notes is string
         && request.resource.data.notes.size() <= 500
         && request.resource.data.location is string
