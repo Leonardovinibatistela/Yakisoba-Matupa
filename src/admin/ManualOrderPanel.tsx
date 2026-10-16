@@ -165,7 +165,7 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
   const isYakiInstance = (cartId: string) => cartId.includes(INSTANCE_SEPARATOR) && catalog.sections.some((section) => section.allowsAddons && section.items.some((item) => item.id === yakiBase(cartId)));
 
   return (
-    <div ref={topRef} className={`mt-10 scroll-mt-4 rounded-2xl border border-white/10 bg-[#171211] p-4 sm:p-6 ${lines.length > 0 ? "pb-24 sm:pb-24 lg:pb-6" : ""}`}>
+    <div ref={topRef} className="mt-10 scroll-mt-4 rounded-2xl border border-white/10 bg-[#171211] p-4 pb-28 sm:p-6 sm:pb-28">
       <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Pedido manual</p>
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Lançar pedido de telefone, WhatsApp ou balcão</h2>
       <p className="mt-1.5 text-sm text-white/50">Escolha os itens, preencha os dados e registre. O pedido entra igual ao do site: toca o sininho, imprime (se a impressora estiver ligada), desconta o estoque e entra no Financeiro. Funciona mesmo com o site fechado.</p>
@@ -201,7 +201,7 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
           </div>
         </div>
 
-        <div ref={orderColumnRef} className="scroll-mt-4 space-y-5 lg:sticky lg:top-4 lg:self-start">
+        <div ref={orderColumnRef} className="scroll-mt-4 space-y-5 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-7.5rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
           <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
             <p className={labelClass}>Itens do pedido</p>
             {lines.length === 0 ? <p className="mt-2 text-sm text-white/40">Nada escolhido ainda.</p> : (
@@ -313,23 +313,24 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
             </div>
           </section>
 
-          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:p-4">
-            <dl className="space-y-1 text-sm text-white/70">
-              <div className="flex justify-between"><dt>Subtotal</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
-              {deliveryType === "entrega" && <div className="flex justify-between"><dt>Entrega</dt><dd className="tabular-nums">{money(fee)}</dd></div>}
-              <div className="flex justify-between border-t border-white/10 pt-2 text-base font-extrabold text-[#ff8b60]"><dt>Total</dt><dd className="tabular-nums">{money(total)}</dd></div>
-            </dl>
-            {error && <p role="alert" className="mt-3 text-xs font-semibold leading-relaxed text-red-400">{error}</p>}
-            <button type="button" onClick={submit} disabled={submitting || lines.length === 0} className="mt-4 min-h-[48px] w-full rounded-full bg-[#ff5a19] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-not-allowed disabled:opacity-50">{submitting ? "Registrando…" : "Registrar pedido"}</button>
-          </section>
         </div>
       </div>
-      {lines.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-white/15 bg-[#171211]/95 px-4 py-3 backdrop-blur lg:hidden">
-          <p className="text-sm font-bold text-white">{parentLines.length} {parentLines.length === 1 ? "item" : "itens"} · <span className="text-[#ff8b60]">{money(total)}</span></p>
-          <button type="button" onClick={() => orderColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="min-h-[40px] rounded-full bg-[#ff5a19] px-4 py-2 text-xs font-bold text-white">Ver pedido ↓</button>
+      {/* Barra fixa: total e "Registrar pedido" ficam sempre visíveis, sem precisar rolar até o fim do formulário. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/15 bg-[#171211]/95 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-5 py-3 sm:px-8">
+          {error && <p role="alert" className="mb-2 text-xs font-semibold leading-relaxed text-red-400">{error}</p>}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] text-white/50">{parentLines.length} {parentLines.length === 1 ? "item" : "itens"}{deliveryType === "entrega" ? ` · entrega ${money(fee)}` : ""}</p>
+              <p className="text-xl font-extrabold leading-tight tabular-nums text-[#ff8b60]">{money(total)}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={() => orderColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="min-h-[48px] rounded-full border border-white/20 px-4 text-xs font-bold text-white/80 lg:hidden">↓ Pedido</button>
+              <button type="button" onClick={submit} disabled={submitting || lines.length === 0} className="min-h-[48px] rounded-full bg-[#ff5a19] px-5 text-sm font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-not-allowed disabled:opacity-50 sm:px-6">{submitting ? "Registrando…" : <><span className="sm:hidden">Registrar</span><span className="hidden sm:inline">Registrar pedido</span></>}</button>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
