@@ -164,8 +164,8 @@ type DeliveryQuote = {
 const DeliveryQuoteContext = createContext<DeliveryQuote>({ config: null, flatFee: LEGACY_FLAT_FEE, geo: { status: "idle" }, quotedFee: null, outOfRange: false, ready: true, requestLocation: () => {} });
 
 const yakiSectionIds = ["yaki-medio", "yaki-grande"];
-// Pergunta "Quer adaptador de hashi?" no checkout. Fica desligada até o cliente (dono da loja) liberar — é só trocar pra true.
-const CHOPSTICK_ADAPTER_ENABLED = false;
+// Pergunta "Quer adaptador de hashi?" no checkout (ligada). Pra desligar de novo, é só trocar pra false.
+const CHOPSTICK_ADAPTER_ENABLED = true;
 const cutleryOptions: { id: "hashi" | "garfo" | "nenhum"; label: string }[] = [{ id: "hashi", label: "Hashi" }, { id: "garfo", label: "Garfo" }, { id: "nenhum", label: "Não preciso" }];
 const paymentOptions: { id: "pix" | "cartao" | "debito" | "dinheiro"; label: string }[] = [{ id: "pix", label: "Pix" }, { id: "cartao", label: "Crédito" }, { id: "debito", label: "Débito" }, { id: "dinheiro", label: "Dinheiro" }];
 const PIX_KEY = "623212490001-56";
