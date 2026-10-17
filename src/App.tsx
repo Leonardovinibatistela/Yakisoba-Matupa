@@ -276,7 +276,7 @@ export default function App() {
       window.removeEventListener("focus", recheck);
     };
   }, []);
-  // "Abrir agora": abre o site fora do horário, mas só vale no dia em que foi ligado (expira à meia-noite) —
+  // "Abrir agora": abre o site fora do horário, mas só vale até as 2h da manhã seguinte (expira sozinho) —
   // assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
   // scheduleState troca a cada 30s, então isso é reavaliado sozinho na virada do dia.
   const manualCloseActive = isManualCloseActive(manualCloseInfo, new Date());

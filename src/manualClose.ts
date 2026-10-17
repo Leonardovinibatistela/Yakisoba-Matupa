@@ -4,7 +4,7 @@ import type { ManualCloseInfo } from "./manualCloseRule";
 
 // Fechamento manual: o admin força o site fechado por hoje mesmo dentro do horário normal (loja de mudança,
 // feriado, imprevisto). Vence a agenda E a abertura antecipada (ver storeHours.ts, computeStoreOpen). Nunca
-// depende de ninguém lembrar de desligar: expira sozinho à meia-noite do dia em que foi ligado (ver
+// depende de ninguém lembrar de desligar: expira sozinho às 2h da manhã seguinte ao dia em que foi ligado (ver
 // manualCloseRule.ts) — no dia seguinte o site volta a seguir o horário normal sozinho.
 const manualCloseRef = doc(db, "menuStatus", "manualClose");
 

@@ -3,7 +3,7 @@ import { db } from "./firebase";
 import type { ManualOpenInfo } from "./manualOpenRule";
 
 // "Abrir agora": o admin abre o site pra pedidos fora do horário normal — antes de abrir (ex.: evento
-// na cidade) ou depois de fechar (ex.: sexta cheia). Expira à meia-noite do dia em que foi ligado
+// na cidade) ou depois de fechar (ex.: sexta cheia). Expira às 2h da manhã seguinte ao dia em que foi ligado
 // (ver manualOpenRule.ts), mesmo que ninguém desligue o botão.
 const manualOpenRef = doc(db, "menuStatus", "manualOpen");
 

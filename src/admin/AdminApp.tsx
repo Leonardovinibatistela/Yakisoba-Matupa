@@ -265,7 +265,7 @@ function Dashboard({ user }: { user: User }) {
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
   const [togglingManualOpen, setTogglingManualOpen] = useState(false);
   useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
-  // Reavalia a cada 30s: quando o site fecha no horário oficial (ou passa da meia-noite), a abertura antecipada
+  // Reavalia a cada 30s: quando o site fecha no horário oficial (ou passa das 2h da manhã), a abertura antecipada
   // deixa de valer e o botão volta sozinho a "Abrir agora" — mesmo com o painel aberto a noite inteira,
   // pra quem só olha o painel enxergar que o site fechou. Mesma regra do site (storeHours.ts).
   const [, setClockTick] = useState(0);
@@ -678,7 +678,7 @@ function Dashboard({ user }: { user: User }) {
             <button type="button" onClick={handleToggleManualClose} disabled={togglingManualClose} title="Força o site fechado por hoje, mesmo dentro do horário normal (loja de mudança, feriado, imprevisto). Volta sozinho amanhã — não precisa lembrar de desligar." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualCloseOn ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingManualClose ? "…" : manualCloseOn ? "🔴 Fechado hoje — reabrir" : "🔒 Fechar por hoje"}
             </button>
-            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido fora do horário (antes de abrir ou depois de fechar — horário normal: ${STORE_HOURS_LABEL_ADMIN}), só por hoje: desliga sozinho à meia-noite — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
+            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido fora do horário (antes de abrir ou depois de fechar — horário normal: ${STORE_HOURS_LABEL_ADMIN}), só por hoje: desliga sozinho às 2h da manhã — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
             </button>
             <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
