@@ -276,8 +276,8 @@ export default function App() {
       window.removeEventListener("focus", recheck);
     };
   }, []);
-  // Abertura antecipada: (1) nunca vale depois do horário oficial de fechar e (2) só vale no dia em que
-  // foi ligada (expira à meia-noite) — assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
+  // "Abrir agora": abre o site fora do horário, mas só vale no dia em que foi ligado (expira à meia-noite) —
+  // assim o site fecha sozinho mesmo se o admin esquecer o botão ligado.
   // scheduleState troca a cada 30s, então isso é reavaliado sozinho na virada do dia.
   const manualCloseActive = isManualCloseActive(manualCloseInfo, new Date());
   const storeOpen = computeStoreOpen(scheduleState.open, manualOpenInfo, manualCloseInfo, new Date());

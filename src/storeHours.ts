@@ -18,26 +18,18 @@ export function isStoreOpen(date = new Date()): boolean {
   return minutesNow >= openMinutes && minutesNow < closeMinutes;
 }
 
-// Usado pela abertura antecipada (botão do admin): mesmo com o site aberto
-// na marra fora do horário, nunca deixa passar do horário oficial de
-// fechar — assim o Sooba não corre risco de ficar "aberto" a noite toda
-// se o admin esquecer de desligar o botão.
-export function isBeforeClosingTime(date = new Date()): boolean {
-  const minutesNow = date.getHours() * 60 + date.getMinutes();
-  return minutesNow < scheduleMinutes(date).closeMinutes;
-}
-
 /**
- * A abertura antecipada está valendo AGORA? Só se estiver ligada, tiver sido ligada HOJE (expira à meia-noite)
- * e ainda não tiver passado do horário oficial de fechar. Passou disso, é como se o botão tivesse desligado:
- * o site fecha e o botão do painel volta a "Abrir agora".
+ * O botão "Abrir agora" está valendo AGORA? Só se estiver ligado e tiver sido ligado HOJE: ele abre o site fora do
+ * horário (antes de abrir ou depois de fechar — ex.: sexta cheia, quer seguir recebendo pedido depois das 22h) e
+ * expira sozinho à meia-noite, então o site nunca fica aberto a noite toda se esquecerem de desligar.
+ * (Antes ele também morria no horário oficial de fechar, e por isso "não fazia nada" depois das 22h.)
  */
-export const isManualOpenEffective = (info: ManualOpenInfo, now: Date): boolean => isManualOpenActive(info, now) && isBeforeClosingTime(now);
+export const isManualOpenEffective = (info: ManualOpenInfo, now: Date): boolean => isManualOpenActive(info, now);
 
 /**
  * Se está aberto AGORA, juntando tudo: o fechamento manual ("Fechar por hoje") sempre vence — ignora a
  * agenda normal e a abertura antecipada, porque foi um pedido explícito do admin pra não abrir hoje.
- * Sem ele, vale o de sempre: agenda normal OU abertura antecipada ainda dentro do horário de hoje.
+ * Sem ele, vale o de sempre: agenda normal OU "Abrir agora" ligado hoje (até a meia-noite).
  */
 export function computeStoreOpen(scheduleOpen: boolean, manualOpenInfo: ManualOpenInfo, manualCloseInfo: ManualCloseInfo, now: Date): boolean {
   if (isManualCloseActive(manualCloseInfo, now)) return false;

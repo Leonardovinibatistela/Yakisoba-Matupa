@@ -2,11 +2,9 @@ import { doc, onSnapshot, serverTimestamp, setDoc, Timestamp } from "firebase/fi
 import { db } from "./firebase";
 import type { ManualOpenInfo } from "./manualOpenRule";
 
-// Abertura antecipada: admin pode abrir o site pra pedidos antes do horário
-// normal (ex.: evento na cidade, quer começar mais cedo). Isso NUNCA empurra
-// o horário de fechar — o site sempre fecha sozinho no horário oficial
-// (ver storeHours.ts) — e também expira à meia-noite do dia em que foi
-// ligada (ver manualOpenRule.ts), mesmo que ninguém desligue o botão.
+// "Abrir agora": o admin abre o site pra pedidos fora do horário normal — antes de abrir (ex.: evento
+// na cidade) ou depois de fechar (ex.: sexta cheia). Expira à meia-noite do dia em que foi ligado
+// (ver manualOpenRule.ts), mesmo que ninguém desligue o botão.
 const manualOpenRef = doc(db, "menuStatus", "manualOpen");
 
 export function subscribeManualOpen(onUpdate: (info: ManualOpenInfo) => void, onError?: (error: unknown) => void): () => void {
