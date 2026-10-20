@@ -289,7 +289,10 @@ function Dashboard({ user }: { user: User }) {
   const handleToggleManualOpen = () => {
     const next = !manualOpen;
     setTogglingManualOpen(true);
-    setManualOpen(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualOpen(false));
+    // "Abrir agora" e "Fechar por hoje" não podem ficar ligados juntos (o fechar vence e o painel parece quebrado:
+    // botão verde, site fechado). Quem foi apertado por último manda: abrir desliga o fechar de hoje.
+    const clearClose = next && manualCloseOn ? setManualClose(false) : Promise.resolve();
+    Promise.all([clearClose, setManualOpen(next)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualOpen(false));
   };
 
   const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
@@ -300,7 +303,9 @@ function Dashboard({ user }: { user: User }) {
     const next = !manualCloseOn;
     if (next && !window.confirm("Fechar o site por hoje? Ninguém consegue pedir, mesmo dentro do horário normal. Volta sozinho amanhã, sem precisar lembrar de desligar.")) return;
     setTogglingManualClose(true);
-    setManualClose(next).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualClose(false));
+    // Fechar por hoje desliga o "Abrir agora" (mesmo motivo: nunca os dois ligados ao mesmo tempo).
+    const clearOpen = next && manualOpen ? setManualOpen(false) : Promise.resolve();
+    Promise.all([clearOpen, setManualClose(next)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualClose(false));
   };
   // Status ao vivo (site aberto ou fechado AGORA, juntando agenda + abertura antecipada + fechamento manual) —
   // reavalia junto com clockTick, então também atualiza sozinho na hora certa de abrir/fechar.
