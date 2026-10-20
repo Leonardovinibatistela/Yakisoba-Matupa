@@ -692,6 +692,7 @@ function Dashboard({ user }: { user: User }) {
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingPause ? "…" : emergencyPaused ? `⏸️ Pausado${pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — reativar` : "⏸️ Pausar pedidos"}
             </button>
+            {siteView.secondary && <button type="button" onClick={handleSecondarySite} disabled={togglingSite} title={siteView.secondary.hint} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.secondary.kind === "cancelSkip" ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>{togglingSite ? "…" : siteView.secondary.label}</button>}
             <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
           </div>
         </div>
@@ -701,7 +702,6 @@ function Dashboard({ user }: { user: User }) {
           const pausedOpen = emergencyPaused && siteView.open;
           const tone = pausedOpen ? "border-amber-400/40 bg-amber-500/10" : siteView.open ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10";
           const headColor = pausedOpen ? "text-amber-300" : siteView.open ? "text-emerald-300" : "text-red-300";
-          const secondary = siteView.secondary;
           return (
             <div className={`mt-5 rounded-2xl border px-4 py-4 ${tone}`}>
               <p className={`text-base font-extrabold tracking-wide ${headColor}`}>{pausedOpen ? "⏸️ SITE ABERTO, MAS PEDIDOS PAUSADOS · não recebe pedidos" : siteView.headline}</p>
@@ -711,12 +711,6 @@ function Dashboard({ user }: { user: User }) {
                   <button type="button" onClick={handlePrimarySite} disabled={togglingSite} className={`min-h-[48px] rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.primary.label}</button>
                   <p className="px-2 text-[11px] leading-snug text-white/55">{siteView.primary.hint}</p>
                 </div>
-                {secondary && (
-                  <div className="flex w-full flex-col gap-1.5 sm:w-72">
-                    <button type="button" onClick={handleSecondarySite} disabled={togglingSite} className={`min-h-[48px] rounded-full border px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${secondary.kind === "skip" ? "border-red-400/60 text-red-200 hover:bg-red-500/15" : "border-white/30 text-white/85 hover:bg-white/10"}`}>{togglingSite ? "…" : secondary.label}</button>
-                    <p className="px-2 text-[11px] leading-snug text-white/55">{secondary.hint}</p>
-                  </div>
-                )}
               </div>
             </div>
           );

@@ -126,7 +126,7 @@ export function describeSite(now: Date, manualOpenInfo: ManualOpenInfo, manualCl
       secondary: cancel
         ? {
             kind: "cancelSkip",
-            label: "↩️ Hoje vamos abrir",
+            label: "🚫 Hoje não vamos abrir — desfazer",
             hint: scheduleOpen ? `Cancela o "não vamos abrir hoje" e o site abre agora, no horário normal.` : `Cancela o "não vamos abrir hoje" e o site abre no horário normal (hoje às ${openLabel(now)}).`,
             confirmText: null,
           }
