@@ -19,7 +19,7 @@ import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee
 import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
-import { describeSite, planSitePress, planSkipToday } from "../siteControl";
+import { describeSite, planCancelSkip, planSitePress, planSkipToday, type SiteWrites } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
@@ -304,25 +304,23 @@ function Dashboard({ user }: { user: User }) {
 
   const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
   useEffect(() => subscribeManualClose(setManualCloseInfo), []);
-  // UM botão pro site: sempre faz o contrário do que está acontecendo agora (ver siteControl.ts). Atualiza junto com
-  // o relógio (clockTick), então o texto e o botão mudam sozinhos na hora de abrir/fechar.
+  // Status + botões do site (ver siteControl.ts): botão principal (abrir/fechar AGORA) e o botão "Hoje não vamos abrir".
+  // Atualiza junto com o relógio (clockTick), então o texto e os botões mudam sozinhos na hora de abrir/fechar.
   const [togglingSite, setTogglingSite] = useState(false);
   const siteView = describeSite(new Date(), manualOpenInfo, manualCloseInfo);
-  const handleToggleSite = () => {
-    const now = new Date();
-    const view = describeSite(now, manualOpenInfo, manualCloseInfo);
-    if (view.confirmText && !window.confirm(view.confirmText)) return;
-    const writes = planSitePress(now, manualOpenInfo, manualCloseInfo);
+  const applySiteWrites = (writes: SiteWrites, confirmText: string | null) => {
+    if (confirmText && !window.confirm(confirmText)) return;
     setTogglingSite(true);
     Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
   };
-  // "Fechar por hoje" com o site ainda fechado pelo horário (ex.: de manhã): hoje não abre às 18:30 (feriado, mudança...).
-  const handleSkipToday = () => {
-    const view = describeSite(new Date(), manualOpenInfo, manualCloseInfo);
-    if (!view.skipToday || !window.confirm(view.skipToday.confirmText)) return;
-    const writes = planSkipToday();
-    setTogglingSite(true);
-    Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
+  const handlePrimarySite = () => {
+    const now = new Date();
+    applySiteWrites(planSitePress(now, manualOpenInfo, manualCloseInfo), describeSite(now, manualOpenInfo, manualCloseInfo).primary.confirmText);
+  };
+  const handleSecondarySite = () => {
+    const secondary = describeSite(new Date(), manualOpenInfo, manualCloseInfo).secondary;
+    if (!secondary) return;
+    applySiteWrites(secondary.kind === "skip" ? planSkipToday() : planCancelSkip(), secondary.confirmText);
   };
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
@@ -698,16 +696,31 @@ function Dashboard({ user }: { user: User }) {
           </div>
         </div>
 
-        <div className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 ${siteView.open ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10"}`}>
-          <div className="min-w-0 flex-1">
-            <p className={`text-base font-extrabold tracking-wide ${siteView.open ? "text-emerald-300" : "text-red-300"}`}>{siteView.headline}</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-white/65">{siteView.detail}</p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button type="button" onClick={handleToggleSite} disabled={togglingSite} className={`min-h-[48px] shrink-0 rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.buttonLabel}</button>
-            {siteView.skipToday && <button type="button" onClick={handleSkipToday} disabled={togglingSite} className="min-h-[48px] rounded-full border border-red-400/60 px-5 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/15 disabled:cursor-wait disabled:opacity-50">{siteView.skipToday.label}</button>}
-          </div>
-        </div>
+        {(() => {
+          // Pedidos pausados: o site está de pé mas ninguém consegue finalizar — não pode aparecer como "aberto e recebendo".
+          const pausedOpen = emergencyPaused && siteView.open;
+          const tone = pausedOpen ? "border-amber-400/40 bg-amber-500/10" : siteView.open ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10";
+          const headColor = pausedOpen ? "text-amber-300" : siteView.open ? "text-emerald-300" : "text-red-300";
+          const secondary = siteView.secondary;
+          return (
+            <div className={`mt-5 rounded-2xl border px-4 py-4 ${tone}`}>
+              <p className={`text-base font-extrabold tracking-wide ${headColor}`}>{pausedOpen ? "⏸️ SITE ABERTO, MAS PEDIDOS PAUSADOS · não recebe pedidos" : siteView.headline}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-white/65">{pausedOpen ? 'Ninguém consegue finalizar pedido até você reativar (botão "Pausado — reativar", no topo). ' : ""}{siteView.detail}</p>
+              <div className="mt-3 flex flex-wrap items-start gap-x-5 gap-y-3">
+                <div className="flex w-full flex-col gap-1.5 sm:w-64">
+                  <button type="button" onClick={handlePrimarySite} disabled={togglingSite} className={`min-h-[48px] rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.primary.label}</button>
+                  <p className="px-2 text-[11px] leading-snug text-white/55">{siteView.primary.hint}</p>
+                </div>
+                {secondary && (
+                  <div className="flex w-full flex-col gap-1.5 sm:w-72">
+                    <button type="button" onClick={handleSecondarySite} disabled={togglingSite} className={`min-h-[48px] rounded-full border px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${secondary.kind === "skip" ? "border-red-400/60 text-red-200 hover:bg-red-500/15" : "border-white/30 text-white/85 hover:bg-white/10"}`}>{togglingSite ? "…" : secondary.label}</button>
+                    <p className="px-2 text-[11px] leading-snug text-white/55">{secondary.hint}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
 
         <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
