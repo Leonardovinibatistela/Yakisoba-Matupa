@@ -271,7 +271,7 @@ function Dashboard({ user }: { user: User }) {
     const check = async () => {
       try {
         const response = await fetch(`${window.location.pathname}?v=${Date.now()}`, { cache: "no-store" });
-        const latest = /<meta name="build-id" content="([^"]+)"/.exec(await response.text())?.[1];
+        const latest = /<meta name="build-id" content="([a-z0-9]+)"/.exec(await response.text())?.[1];
         if (latest && latest !== current) setNewVersionReady(true);
       } catch { /* sem internet agora: tenta de novo na próxima */ }
     };
