@@ -98,7 +98,13 @@ export function describeSite(now: Date, manualOpenInfo: ManualOpenInfo, manualCl
         hint: `Se apertar, o site FECHA agora pra todos os clientes e só volta ${dayWord(tomorrowOpen, now)} às ${openLabel(tomorrowOpen)}.`,
         confirmText: "Fechar o site AGORA? Os clientes não conseguem mais pedir até o horário normal de amanhã. Dá pra abrir de novo a qualquer hora.",
       },
-      secondary: null,
+      // Botão pequeno do cabeçalho (ao lado do Pausar pedidos): sempre à mão durante o dia. Com o site aberto ele fecha agora e o resto do dia.
+      secondary: {
+        kind: "skip",
+        label: "🚫 Hoje não vamos abrir",
+        hint: `O site FECHA agora e não abre mais hoje. ${dayWord(tomorrowOpen, now) === "hoje" ? "Hoje" : "Amanhã"} volta ao horário normal sozinho.`,
+        confirmText: "Hoje não vamos abrir? O site FECHA agora e fica fechado o resto do dia; no próximo horário normal volta sozinho. Dá pra desfazer a qualquer hora.",
+      },
     };
   }
 
