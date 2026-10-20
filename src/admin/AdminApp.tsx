@@ -19,7 +19,7 @@ import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee
 import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
-import { describeSite, planSitePress } from "../siteControl";
+import { describeSite, planSitePress, planSkipToday } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
@@ -313,6 +313,14 @@ function Dashboard({ user }: { user: User }) {
     const view = describeSite(now, manualOpenInfo, manualCloseInfo);
     if (view.confirmText && !window.confirm(view.confirmText)) return;
     const writes = planSitePress(now, manualOpenInfo, manualCloseInfo);
+    setTogglingSite(true);
+    Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
+  };
+  // "Fechar por hoje" com o site ainda fechado pelo horário (ex.: de manhã): hoje não abre às 18:30 (feriado, mudança...).
+  const handleSkipToday = () => {
+    const view = describeSite(new Date(), manualOpenInfo, manualCloseInfo);
+    if (!view.skipToday || !window.confirm(view.skipToday.confirmText)) return;
+    const writes = planSkipToday();
     setTogglingSite(true);
     Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
   };
@@ -695,7 +703,10 @@ function Dashboard({ user }: { user: User }) {
             <p className={`text-base font-extrabold tracking-wide ${siteView.open ? "text-emerald-300" : "text-red-300"}`}>{siteView.headline}</p>
             <p className="mt-0.5 text-xs leading-relaxed text-white/65">{siteView.detail}</p>
           </div>
-          <button type="button" onClick={handleToggleSite} disabled={togglingSite} className={`min-h-[48px] shrink-0 rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.buttonLabel}</button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button type="button" onClick={handleToggleSite} disabled={togglingSite} className={`min-h-[48px] shrink-0 rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.buttonLabel}</button>
+            {siteView.skipToday && <button type="button" onClick={handleSkipToday} disabled={togglingSite} className="min-h-[48px] rounded-full border border-red-400/60 px-5 py-3 text-sm font-bold text-red-200 transition hover:bg-red-500/15 disabled:cursor-wait disabled:opacity-50">{siteView.skipToday.label}</button>}
+          </div>
         </div>
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
 

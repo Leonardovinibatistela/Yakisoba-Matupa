@@ -4,7 +4,7 @@
 // mas nunca deixa as duas ligadas juntas, então não dá pra ficar "botão verde e site fechado".
 import { computeStoreOpen, isManualOpenEffective, isStoreOpen, scheduleMinutes } from "./storeHours";
 import { isManualCloseActive, type ManualCloseInfo } from "./manualCloseRule";
-import { businessDayEnd, manualOpenExpiry, sameLocalDay, type ManualOpenInfo } from "./manualOpenRule";
+import { BUSINESS_DAY_END_HOUR, businessDayEnd, manualOpenExpiry, sameLocalDay, type ManualOpenInfo } from "./manualOpenRule";
 
 /** O que gravar nas duas chaves quando o botão é apertado (as duas sempre, pra nunca sobrar uma ligada). */
 export type SiteWrites = { manualClose: boolean; manualOpen: boolean };
@@ -21,6 +21,11 @@ export function planSitePress(now: Date, manualOpenInfo: ManualOpenInfo, manualC
   return { manualClose: false, manualOpen: !scheduleOpen };
 }
 
+/** "Fechar por hoje" com o site ainda fechado pelo horário (ex.: 10h da manhã): avisa que hoje NÃO vão abrir às 18:30. */
+export function planSkipToday(): SiteWrites {
+  return { manualClose: true, manualOpen: false };
+}
+
 export type SiteView = {
   open: boolean;
   headline: string;
@@ -29,6 +34,8 @@ export type SiteView = {
   detail: string;
   /** Pergunta de confirmação (só quando o botão vai FECHAR o site); null quando vai abrir. */
   confirmText: string | null;
+  /** Só quando o site está fechado pelo horário ANTES da abertura de hoje e ninguém fechou ainda: segundo botão "Fechar por hoje" (hoje não abre). */
+  skipToday: { label: string; confirmText: string } | null;
 };
 
 const hhmm = (date: Date) => date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -59,12 +66,22 @@ export function describeSite(now: Date, manualOpenInfo: ManualOpenInfo, manualCl
     const detail = manualOpened
       ? `Aberto por você${sinceLabel(manualOpenInfo.openedAt, now)}. Fecha sozinho ${expiryLabel(manualOpenInfo.openedAt ?? now)}.`
       : `Horário normal. Fecha sozinho às ${Math.floor(scheduleMinutes(now).closeMinutes / 60)}h.`;
-    return { open: true, headline: "🟢 SITE ABERTO", buttonLabel: "🔒 Fechar o site", detail, confirmText: "Fechar o site agora? Ninguém consegue pedir até as 2h da manhã; depois volta ao horário normal sozinho. Dá pra abrir de novo a qualquer hora." };
+    return { open: true, headline: "🟢 SITE ABERTO", buttonLabel: "🔒 Fechar por hoje", detail, skipToday: null, confirmText: "Fechar o site agora? Ninguém consegue pedir até as 2h da manhã; depois volta ao horário normal sozinho. Dá pra abrir de novo a qualquer hora." };
   }
   if (manualClosed) {
     const back = nextScheduleOpen(businessDayEnd(manualCloseInfo.closedAt ?? now));
-    return { open: false, headline: "🔴 SITE FECHADO", buttonLabel: "🟢 Abrir o site", detail: `Fechado por você${sinceLabel(manualCloseInfo.closedAt, now)}. Volta ao horário normal ${dayWord(back, now)} às ${openLabel(back)}.`, confirmText: null };
+    return { open: false, headline: "🔴 SITE FECHADO", buttonLabel: "🟢 Abrir o site", detail: `Fechado por você${sinceLabel(manualCloseInfo.closedAt, now)}. Volta ao horário normal ${dayWord(back, now)} às ${openLabel(back)}.`, confirmText: null, skipToday: null };
   }
   const next = nextScheduleOpen(now);
-  return { open: false, headline: "🔴 SITE FECHADO", buttonLabel: "🟢 Abrir o site", detail: `Fora do horário. Abre ${dayWord(next, now)} às ${openLabel(next)}. Se apertar "Abrir o site", abre agora e fecha sozinho ${expiryLabel(now)}.`, confirmText: null };
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const beforeTodaysOpening = minutes >= BUSINESS_DAY_END_HOUR * 60 && minutes < scheduleMinutes(now).openMinutes;
+  const skipHint = beforeTodaysOpening ? ` Se hoje não vão abrir, aperte "Fechar por hoje".` : "";
+  return {
+    open: false,
+    headline: "🔴 SITE FECHADO",
+    buttonLabel: "🟢 Abrir o site",
+    detail: `Fora do horário. Abre ${dayWord(next, now)} às ${openLabel(next)}. Se apertar "Abrir o site", abre agora e fecha sozinho ${expiryLabel(now)}.${skipHint}`,
+    confirmText: null,
+    skipToday: beforeTodaysOpening ? { label: "🔒 Fechar por hoje", confirmText: `Fechar o site por hoje? Hoje não abre às ${openLabel(next)}: ninguém consegue pedir até amanhã, quando volta ao horário normal sozinho. Dá pra abrir de novo a qualquer hora.` } : null,
+  };
 }
