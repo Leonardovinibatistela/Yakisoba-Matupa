@@ -1,4 +1,5 @@
 // Só regra — nada de Firebase aqui, pra dar pra testar sozinho.
+import { scheduleMinutes } from "./scheduleRule";
 
 /** O que o botão "Abrir agora" do painel guarda: se está ligado e QUANDO foi ligado. */
 export type ManualOpenInfo = { open: boolean; openedAt: Date | null };
@@ -24,11 +25,24 @@ export function isSameBusinessDay(from: Date, now: Date): boolean {
 }
 
 /**
- * "Abrir agora" só vale no DIA DE FUNCIONAMENTO em que foi ligado: vai até as 2h da manhã e aí desliga sozinho,
- * mesmo que o admin esqueça — ligou às 21:55 ou depois da meia-noite, fecha às 2h. (Antes ela ficava ligada pra
- * sempre e, no dia seguinte, o site abria de novo desde 00:00.) Sem data de quando foi ligada (registro antigo),
- * não vale: é o lado seguro. Dentro desse prazo vale mesmo depois do horário oficial de fechar.
+ * Até quando vale um "Abrir agora" ligado em `openedAt` (desliga sozinho, mesmo que o admin esqueça):
+ * - ligou DEPOIS do horário (à noite ou de madrugada): vai até as 2h da manhã seguinte (sexta cheia, evento);
+ * - ligou ANTES do horário normal (de manhã/tarde, só pra abrir mais cedo): vai até o fechamento normal daquele
+ *   dia (22h seg-sex, 23h sáb-dom) — não fica aberto a noite toda por esquecimento.
  */
+export function manualOpenExpiry(openedAt: Date): Date {
+  const minutes = openedAt.getHours() * 60 + openedAt.getMinutes();
+  const { openMinutes, closeMinutes } = scheduleMinutes(openedAt);
+  if (minutes >= BUSINESS_DAY_END_HOUR * 60 && minutes < openMinutes) {
+    const end = new Date(openedAt.getFullYear(), openedAt.getMonth(), openedAt.getDate(), 0, 0, 0, 0);
+    end.setMinutes(closeMinutes);
+    return end;
+  }
+  return businessDayEnd(openedAt);
+}
+
+/** "Abrir agora" está valendo AGORA? Ligado, com data de quando foi ligado (registro antigo sem data não vale: lado seguro) e ainda dentro do prazo de manualOpenExpiry. */
 export function isManualOpenActive(info: ManualOpenInfo, now: Date): boolean {
-  return info.open && info.openedAt !== null && isSameBusinessDay(info.openedAt, now);
+  if (!info.open || info.openedAt === null) return false;
+  return now.getTime() >= info.openedAt.getTime() - CLOCK_SKEW_MS && now.getTime() < manualOpenExpiry(info.openedAt).getTime();
 }

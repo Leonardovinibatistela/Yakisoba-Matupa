@@ -19,8 +19,7 @@ import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee
 import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
-import { isManualCloseActive } from "../manualCloseRule";
-import { computeStoreOpen, isManualOpenEffective, isStoreOpen } from "../storeHours";
+import { describeSite, planSitePress } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
 import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
@@ -43,7 +42,6 @@ import ShoppingList from "./ShoppingList";
 import ManualOrderPanel from "./ManualOrderPanel";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const STORE_HOURS_LABEL_ADMIN = "Seg a Sex 22h · Sáb e Dom 23h";
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
@@ -263,8 +261,26 @@ function Dashboard({ user }: { user: User }) {
   };
 
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
-  const [togglingManualOpen, setTogglingManualOpen] = useState(false);
   useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
+  // Painel que fica aberto o dia todo continua com o código de quando foi carregado: avisa quando sai versão nova
+  // (a cada 5 min e quando a aba volta ao foco) em vez de depender de alguém lembrar do Ctrl+F5.
+  const [newVersionReady, setNewVersionReady] = useState(false);
+  useEffect(() => {
+    const current = document.querySelector('meta[name="build-id"]')?.getAttribute("content");
+    if (!current) return; // modo desenvolvimento: sem id de versão
+    const check = async () => {
+      try {
+        const response = await fetch(`${window.location.pathname}?v=${Date.now()}`, { cache: "no-store" });
+        const latest = /<meta name="build-id" content="([^"]+)"/.exec(await response.text())?.[1];
+        if (latest && latest !== current) setNewVersionReady(true);
+      } catch { /* sem internet agora: tenta de novo na próxima */ }
+    };
+    const timer = setInterval(check, 5 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, []);
+
   // Reavalia a cada 30s: quando o site fecha no horário oficial (ou passa das 2h da manhã), a abertura antecipada
   // deixa de valer e o botão volta sozinho a "Abrir agora" — mesmo com o painel aberto a noite inteira,
   // pra quem só olha o painel enxergar que o site fechou. Mesma regra do site (storeHours.ts).
@@ -285,31 +301,21 @@ function Dashboard({ user }: { user: User }) {
       window.removeEventListener("focus", tick);
     };
   }, []);
-  const manualOpen = isManualOpenEffective(manualOpenInfo, new Date());
-  const handleToggleManualOpen = () => {
-    const next = !manualOpen;
-    setTogglingManualOpen(true);
-    // "Abrir agora" e "Fechar por hoje" não podem ficar ligados juntos (o fechar vence e o painel parece quebrado:
-    // botão verde, site fechado). Quem foi apertado por último manda: abrir desliga o fechar de hoje.
-    const clearClose = next && manualCloseOn ? setManualClose(false) : Promise.resolve();
-    Promise.all([clearClose, setManualOpen(next)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualOpen(false));
-  };
 
   const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
-  const [togglingManualClose, setTogglingManualClose] = useState(false);
   useEffect(() => subscribeManualClose(setManualCloseInfo), []);
-  const manualCloseOn = isManualCloseActive(manualCloseInfo, new Date());
-  const handleToggleManualClose = () => {
-    const next = !manualCloseOn;
-    if (next && !window.confirm("Fechar o site por hoje? Ninguém consegue pedir, mesmo dentro do horário normal. Volta sozinho amanhã, sem precisar lembrar de desligar.")) return;
-    setTogglingManualClose(true);
-    // Fechar por hoje desliga o "Abrir agora" (mesmo motivo: nunca os dois ligados ao mesmo tempo).
-    const clearOpen = next && manualOpen ? setManualOpen(false) : Promise.resolve();
-    Promise.all([clearOpen, setManualClose(next)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingManualClose(false));
+  // UM botão pro site: sempre faz o contrário do que está acontecendo agora (ver siteControl.ts). Atualiza junto com
+  // o relógio (clockTick), então o texto e o botão mudam sozinhos na hora de abrir/fechar.
+  const [togglingSite, setTogglingSite] = useState(false);
+  const siteView = describeSite(new Date(), manualOpenInfo, manualCloseInfo);
+  const handleToggleSite = () => {
+    const now = new Date();
+    const view = describeSite(now, manualOpenInfo, manualCloseInfo);
+    if (view.confirmText && !window.confirm(view.confirmText)) return;
+    const writes = planSitePress(now, manualOpenInfo, manualCloseInfo);
+    setTogglingSite(true);
+    Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
   };
-  // Status ao vivo (site aberto ou fechado AGORA, juntando agenda + abertura antecipada + fechamento manual) —
-  // reavalia junto com clockTick, então também atualiza sozinho na hora certa de abrir/fechar.
-  const siteOpenNow = computeStoreOpen(isStoreOpen(new Date()), manualOpenInfo, manualCloseInfo, new Date());
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
@@ -668,6 +674,7 @@ function Dashboard({ user }: { user: User }) {
 
   return (
     <div className="min-h-screen bg-[#100d0c] px-5 py-8 text-white sm:px-8">
+      {newVersionReady && <div role="status" className="mx-auto mb-5 flex max-w-5xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/40 bg-sky-500/10 px-4 py-3"><p className="text-sm font-bold text-sky-200">🔄 Tem uma versão nova do painel. Atualize pra usar as melhorias.</p><button type="button" onClick={() => window.location.reload()} className="rounded-full bg-sky-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-sky-400">Atualizar agora</button></div>}
       {saveError && <div className="sticky top-3 z-50 mx-auto mb-5 max-w-5xl rounded-2xl border border-red-400/40 bg-[#2a1210] p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-line text-sm font-bold text-red-300">⚠️ {saveError}</p><button type="button" onClick={() => setSaveError(null)} className="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs font-bold text-white/70 hover:border-white/35 hover:text-white">Fechar</button></div></div>}
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -676,22 +683,21 @@ function Dashboard({ user }: { user: User }) {
             <h1 className="mt-1 font-display text-3xl font-extrabold tracking-[-.045em]">Olá, {user.email}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${siteOpenNow ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>{siteOpenNow ? "🟢 Site aberto agora" : "🔴 Site fechado agora"}</span>
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
               {togglingPause ? "…" : emergencyPaused ? `⏸️ Pausado${pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — reativar` : "⏸️ Pausar pedidos"}
-            </button>
-            <button type="button" onClick={handleToggleManualClose} disabled={togglingManualClose} title="Força o site fechado por hoje, mesmo dentro do horário normal (loja de mudança, feriado, imprevisto). Volta sozinho amanhã — não precisa lembrar de desligar." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualCloseOn ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
-              {togglingManualClose ? "…" : manualCloseOn ? "🔴 Fechado hoje — reabrir" : "🔒 Fechar por hoje"}
-            </button>
-            <button type="button" onClick={handleToggleManualOpen} disabled={togglingManualOpen} title={`Abre o site pra pedido fora do horário (antes de abrir ou depois de fechar — horário normal: ${STORE_HOURS_LABEL_ADMIN}), só por hoje: desliga sozinho às 2h da manhã — não precisa lembrar de desligar.`} className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${manualOpen ? "border-emerald-400/60 bg-emerald-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
-              {togglingManualOpen ? "…" : manualOpen ? "🟢 Aberto antecipado" : "🕐 Abrir agora"}
             </button>
             <button type="button" onClick={() => signOut(auth)} className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Sair</button>
           </div>
         </div>
 
+        <div className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 ${siteView.open ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10"}`}>
+          <div className="min-w-0 flex-1">
+            <p className={`text-base font-extrabold tracking-wide ${siteView.open ? "text-emerald-300" : "text-red-300"}`}>{siteView.headline}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-white/65">{siteView.detail}</p>
+          </div>
+          <button type="button" onClick={handleToggleSite} disabled={togglingSite} className={`min-h-[48px] shrink-0 rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.buttonLabel}</button>
+        </div>
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
-        {manualCloseOn && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">🔒 O site está FECHADO hoje (fechamento manual) — ninguém consegue pedir, mesmo dentro do horário normal. Volta sozinho amanhã. Clique em "Fechado hoje — reabrir" (no topo) pra abrir de novo hoje.</div>}
 
         <div className="mt-6 flex gap-1.5 overflow-x-auto rounded-full border border-white/10 bg-[#171211] p-1.5">
           {ADMIN_TABS.filter((tab) => !DEVELOPER_TAB_IDS.includes(tab.id) || isDeveloper).map((tab) => (
