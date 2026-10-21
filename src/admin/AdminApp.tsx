@@ -703,14 +703,14 @@ function Dashboard({ user }: { user: User }) {
           const tone = pausedOpen ? "border-amber-400/40 bg-amber-500/10" : siteView.open ? "border-emerald-400/30 bg-emerald-500/10" : "border-red-400/30 bg-red-500/10";
           const headColor = pausedOpen ? "text-amber-300" : siteView.open ? "text-emerald-300" : "text-red-300";
           return (
-            <div className={`mt-5 rounded-2xl border px-4 py-4 ${tone}`}>
-              <p className={`text-base font-extrabold tracking-wide ${headColor}`}>{pausedOpen ? "⏸️ SITE ABERTO, MAS PEDIDOS PAUSADOS · não recebe pedidos" : siteView.headline}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-white/65">{pausedOpen ? 'Ninguém consegue finalizar pedido até você reativar (botão "Pausado — reativar", no topo). ' : ""}{siteView.detail}</p>
-              <div className="mt-3 flex flex-wrap items-start gap-x-5 gap-y-3">
-                <div className="flex w-full flex-col gap-1.5 sm:w-64">
-                  <button type="button" onClick={handlePrimarySite} disabled={togglingSite} className={`min-h-[48px] rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.primary.label}</button>
-                  <p className="px-2 text-[11px] leading-snug text-white/55">{siteView.primary.hint}</p>
-                </div>
+            <div className={`mt-5 flex flex-wrap items-center justify-between gap-x-8 gap-y-4 rounded-2xl border px-5 py-4 sm:px-6 ${tone}`}>
+              <div className="min-w-0 flex-1 basis-72">
+                <p className={`text-xl font-extrabold tracking-wide sm:text-2xl ${headColor}`}>{pausedOpen ? "⏸️ SITE ABERTO, MAS PEDIDOS PAUSADOS · não recebe pedidos" : siteView.headline}</p>
+                <p className="mt-1 text-sm leading-relaxed text-white/70">{pausedOpen ? 'Ninguém consegue finalizar pedido até você reativar (botão "Pausado — reativar", no topo). ' : ""}{siteView.detail}</p>
+              </div>
+              <div className="flex w-full shrink-0 flex-col gap-1.5 sm:w-80">
+                <button type="button" onClick={handlePrimarySite} disabled={togglingSite} className={`min-h-[52px] w-full rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-wait disabled:opacity-50 ${siteView.open ? "border border-red-400/60 text-red-200 hover:bg-red-500/15" : "bg-emerald-500 text-white hover:bg-emerald-400"}`}>{togglingSite ? "…" : siteView.primary.label}</button>
+                <p className="px-2 text-center text-[11px] leading-snug text-white/55">{siteView.primary.hint}</p>
               </div>
             </div>
           );
