@@ -40,8 +40,12 @@ import { fetchBackup, fetchOrders } from "./backupData";
 import { isBackupOverdue } from "./backupFormat";
 import ShoppingList from "./ShoppingList";
 import ManualOrderPanel from "./ManualOrderPanel";
+import { subscribeConnection } from "./connectionHealth";
+import { actionNotice, buildDiagnosticText, clockIssues, connectionNotice, storeClock, type ActionLog, type ConnectionState, type Notice } from "./siteDiagnostics";
 
 const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+/** "🔒 Fechar o site agora" -> "Fechar o site agora" (pro registro de ordens do diagnóstico). */
+const plainLabel = (label: string) => label.replace(/^[^\p{L}]+/u, "");
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
@@ -263,18 +267,27 @@ function Dashboard({ user }: { user: User }) {
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
   useEffect(() => subscribeManualOpen(setManualOpenInfo), []);
   // Painel que fica aberto o dia todo continua com o código de quando foi carregado: avisa quando sai versão nova
-  // (a cada 5 min e quando a aba volta ao foco) em vez de depender de alguém lembrar do Ctrl+F5.
+  // (a cada 5 min e quando a aba volta ao foco) em vez de depender de alguém lembrar do Ctrl+F5. A mesma consulta
+  // traz a HORA CERTA da internet (cabeçalho Date), pra avisar quando o relógio deste computador está errado.
   const [newVersionReady, setNewVersionReady] = useState(false);
+  const [latestBuildId, setLatestBuildId] = useState<string | null>(null);
+  const [serverClock, setServerClock] = useState<{ serverMs: number; readAt: number } | null>(null);
   useEffect(() => {
     const current = document.querySelector('meta[name="build-id"]')?.getAttribute("content");
-    if (!current) return; // modo desenvolvimento: sem id de versão
     const check = async () => {
       try {
         const response = await fetch(`${window.location.pathname}?v=${Date.now()}`, { cache: "no-store" });
+        const dateHeader = response.headers.get("date");
+        const age = Number(response.headers.get("age") ?? 0);
+        if (dateHeader && !Number.isNaN(Date.parse(dateHeader))) setServerClock({ serverMs: Date.parse(dateHeader) + (Number.isFinite(age) ? age * 1000 : 0), readAt: Date.now() });
         const latest = /<meta name="build-id" content="([a-z0-9]+)"/.exec(await response.text())?.[1];
-        if (latest && latest !== current) setNewVersionReady(true);
+        if (latest) {
+          setLatestBuildId(latest);
+          if (current && latest !== current) setNewVersionReady(true);
+        }
       } catch { /* sem internet agora: tenta de novo na próxima */ }
     };
+    check();
     const timer = setInterval(check, 5 * 60 * 1000);
     const onVisible = () => { if (document.visibilityState === "visible") check(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -308,20 +321,53 @@ function Dashboard({ user }: { user: User }) {
   // Atualiza junto com o relógio (clockTick), então o texto e os botões mudam sozinhos na hora de abrir/fechar.
   const [togglingSite, setTogglingSite] = useState(false);
   const siteView = describeSite(new Date(), manualOpenInfo, manualCloseInfo);
-  const applySiteWrites = (writes: SiteWrites, confirmText: string | null) => {
+  // Registro da ÚLTIMA ordem dada ao site neste aparelho: mostra se o servidor confirmou de verdade. Sem isso, um
+  // computador sem conexão com o servidor mostrava o botão "funcionando" (o painel atualiza na hora, mesmo antes de o
+  // servidor confirmar) enquanto o site dos clientes continuava como estava.
+  const [siteAction, setSiteAction] = useState<ActionLog | null>(null);
+  const applySiteWrites = (label: string, writes: SiteWrites, confirmText: string | null) => {
     if (confirmText && !window.confirm(confirmText)) return;
+    const at = Date.now();
+    setSiteAction({ label, at, state: "pending" });
     setTogglingSite(true);
-    Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)]).catch(() => window.alert("Não foi possível atualizar. Tenta de novo.")).finally(() => setTogglingSite(false));
+    // 8 s sem o servidor confirmar: avisa (e solta o botão) em vez de ficar "carregando" pra sempre.
+    const slowTimer = setTimeout(() => {
+      setSiteAction((current) => (current && current.at === at && current.state === "pending" ? { ...current, state: "slow" } : current));
+      setTogglingSite(false);
+    }, 8000);
+    Promise.all([setManualClose(writes.manualClose), setManualOpen(writes.manualOpen)])
+      .then(() => setSiteAction((current) => (current && current.at === at ? { label, at, state: "ok" } : current)))
+      .catch((error) => {
+        const detail = String((error as { code?: string } | null)?.code ?? (error as Error | null)?.message ?? error);
+        setSiteAction((current) => (current && current.at === at ? { label, at, state: "error", detail } : current));
+        window.alert("Não foi possível atualizar. Tenta de novo.");
+      })
+      .finally(() => { clearTimeout(slowTimer); setTogglingSite(false); });
   };
   const handlePrimarySite = () => {
     const now = new Date();
-    applySiteWrites(planSitePress(now, manualOpenInfo, manualCloseInfo), describeSite(now, manualOpenInfo, manualCloseInfo).primary.confirmText);
+    const view = describeSite(now, manualOpenInfo, manualCloseInfo);
+    applySiteWrites(plainLabel(view.primary.label), planSitePress(now, manualOpenInfo, manualCloseInfo), view.primary.confirmText);
   };
   const handleSecondarySite = () => {
     const secondary = describeSite(new Date(), manualOpenInfo, manualCloseInfo).secondary;
     if (!secondary) return;
-    applySiteWrites(secondary.kind === "skip" ? planSkipToday() : planCancelSkip(), secondary.confirmText);
+    applySiteWrites(plainLabel(secondary.label), secondary.kind === "skip" ? planSkipToday() : planCancelSkip(), secondary.confirmText);
   };
+  // Conexão deste painel com o servidor (e com a internet) pro diagnóstico.
+  const [conn, setConn] = useState<ConnectionState | null>(null);
+  const [lastServerOkAt, setLastServerOkAt] = useState<number | null>(null);
+  useEffect(() => subscribeConnection((state) => { setConn(state); if (!state.fromCache) setLastServerOkAt(state.at); }), []);
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
+  }, []);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagCopied, setDiagCopied] = useState(false);
 
   const [soldOutIds, setSoldOutIds] = useState<Set<string>>(new Set());
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
@@ -713,6 +759,50 @@ function Dashboard({ user }: { user: User }) {
                 <p className="px-2 text-center text-[11px] leading-snug text-white/55">{siteView.primary.hint}</p>
               </div>
             </div>
+          );
+        })()}
+        {(() => {
+          // Avisos que explicam por que ESTE aparelho pode estar diferente do celular de outra pessoa (relógio/fuso, internet, servidor, ordem não confirmada).
+          const nowMs = Date.now();
+          const deviceOffset = new Date().getTimezoneOffset();
+          const serverMsNow = serverClock ? nowMs - (serverClock.readAt - serverClock.serverMs) : null;
+          const connection = connectionNotice({ online, conn, lastOkAt: lastServerOkAt }, nowMs);
+          const action = actionNotice(siteAction, nowMs);
+          const notices: Notice[] = [...clockIssues(nowMs, deviceOffset, serverMsNow).map((text): Notice => ({ tone: "error", text: `⏰ ${text}` })), ...(connection ? [connection] : []), ...(action ? [action] : [])];
+          const toneClass = { ok: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200", info: "border-sky-400/30 bg-sky-500/10 text-sky-200", warn: "border-amber-400/40 bg-amber-500/10 text-amber-200", error: "border-red-400/50 bg-red-500/10 text-red-200" };
+          const since = (date: Date | null) => (date ? ` (desde ${storeClock(date.getTime())})` : "");
+          const diagText = showDiagnostics
+            ? buildDiagnosticText({
+                buildId: document.querySelector('meta[name="build-id"]')?.getAttribute("content") ?? null,
+                latestBuildId,
+                nowMs,
+                deviceOffsetMinutes: deviceOffset,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                serverMs: serverMsNow,
+                online,
+                conn,
+                lastOkAt: lastServerOkAt,
+                email: user.email ?? "?",
+                userAgent: navigator.userAgent,
+                siteState: `${siteView.headline} · ${siteView.detail}`,
+                flags: `abrir=${manualOpenInfo.open ? "ligada" + since(manualOpenInfo.openedAt) : "desligada"} · fechar=${manualCloseInfo.closed ? "ligada" + since(manualCloseInfo.closedAt) : "desligada"}`,
+                action: siteAction,
+              })
+            : "";
+          const copyDiagnostics = async () => {
+            try { await navigator.clipboard.writeText(diagText); setDiagCopied(true); setTimeout(() => setDiagCopied(false), 2500); } catch { window.alert("Não consegui copiar sozinho. Selecione o texto e use Ctrl + C."); }
+          };
+          return (
+            <>
+              {notices.length > 0 && <div className="mt-3 space-y-2" aria-live="polite">{notices.map((notice, index) => <p key={index} className={`rounded-xl border px-4 py-2.5 text-xs font-semibold leading-relaxed ${toneClass[notice.tone]}`}>{notice.text}</p>)}</div>}
+              <div className="mt-2 text-right"><button type="button" onClick={() => setShowDiagnostics((value) => !value)} className="text-[11px] font-semibold text-white/40 transition hover:text-white/70">ℹ️ Diagnóstico</button></div>
+              {showDiagnostics && (
+                <div className="mt-2 rounded-2xl border border-white/10 bg-[#171211] p-4">
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-white/75">{diagText}</pre>
+                  <button type="button" onClick={copyDiagnostics} className="mt-3 rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-white/80 transition hover:bg-white/10">{diagCopied ? "✓ Copiado" : "Copiar pra mandar"}</button>
+                </div>
+              )}
+            </>
           );
         })()}
         {emergencyPaused && <div role="alert" className="mt-5 rounded-2xl border border-red-400/50 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">⏸️ O site está PAUSADO{pausedSinceLabel ? ` desde ${pausedSinceLabel}` : ""} — ninguém consegue finalizar pedido. Clique em "Pausado — reativar" (no topo) pra voltar a receber.</div>}
