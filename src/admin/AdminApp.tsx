@@ -40,6 +40,8 @@ import { fetchBackup, fetchOrders } from "./backupData";
 import { isBackupOverdue } from "./backupFormat";
 import ShoppingList from "./ShoppingList";
 import ManualOrderPanel from "./ManualOrderPanel";
+import KitchenPanel from "./KitchenPanel";
+import { isKitchenLocked, resetKitchenLock } from "./kitchenLock";
 import { subscribeConnection } from "./connectionHealth";
 import { actionNotice, buildDiagnosticText, clockIssues, connectionNotice, storeClock, type ActionLog, type ConnectionState, type Notice } from "./siteDiagnostics";
 
@@ -49,7 +51,7 @@ const plainLabel = (label: string) => label.replace(/^[^\p{L}]+/u, "");
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "pedido" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
+type AdminTab = "visao" | "pedido" | "cozinha" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro" };
 
 // As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
@@ -58,11 +60,20 @@ const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
 // A aba "Pedido manual" está liberada pra equipe da loja (true). Pra voltar a mostrar só pra quem cuida do sistema, é só
 // trocar pra false.
 const MANUAL_ORDER_TAB_FOR_STAFF = true;
-const DEVELOPER_TAB_IDS: AdminTab[] = MANUAL_ORDER_TAB_FOR_STAFF ? ["backup", "importar"] : ["backup", "importar", "pedido"];
+// A aba "Cozinha" (pra quem ajuda a cozinhar: só o que preparar, sem nenhum valor, e dá pra travar o aparelho nela) ainda
+// está só pra quem cuida do sistema. Quando o dono autorizar, é só trocar pra true.
+const KITCHEN_TAB_FOR_STAFF = false;
+const DEVELOPER_TAB_IDS: AdminTab[] = [
+  "backup",
+  "importar",
+  ...(MANUAL_ORDER_TAB_FOR_STAFF ? [] : (["pedido"] as AdminTab[])),
+  ...(KITCHEN_TAB_FOR_STAFF ? [] : (["cozinha"] as AdminTab[])),
+];
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
   { id: "pedido", label: "Pedido manual" },
+  { id: "cozinha", label: "Cozinha" },
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
   { id: "estoque", label: "Estoque" },
@@ -142,6 +153,9 @@ function LoginScreen() {
 
 function Dashboard({ user }: { user: User }) {
   const isDeveloper = DEVELOPER_TAB_EMAILS.includes((user.email ?? "").toLowerCase());
+  const kitchenAllowed = isDeveloper || KITCHEN_TAB_FOR_STAFF;
+  // Aparelho travado na Cozinha: só aquela tela aparece (sem faturamento, financeiro, estoque…) até digitar a senha.
+  const [kitchenLocked, setKitchenLocked] = useState(() => kitchenAllowed && isKitchenLocked());
   const [activeTab, setActiveTab] = useState<AdminTab>("visao");
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
@@ -679,6 +693,40 @@ function Dashboard({ user }: { user: User }) {
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
 
+  const handleForgotKitchenPin = () => {
+    resetKitchenLock();
+    setKitchenLocked(false);
+    signOut(auth);
+  };
+
+  if (kitchenLocked && kitchenAllowed) {
+    return (
+      <div className="min-h-screen bg-[#100d0c] px-5 py-6 text-white sm:px-8">
+        <div className="mx-auto max-w-3xl">
+          {newVersionReady && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-400/40 bg-sky-500/10 px-4 py-3">
+              <p className="text-sm font-bold text-sky-200">🔄 Tem uma versão nova do painel.</p>
+              <button type="button" onClick={() => window.location.reload()} className="rounded-full bg-sky-500 px-4 py-2 text-xs font-bold text-white">Recarregar</button>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+            <span className="text-xs font-extrabold uppercase tracking-[.18em] text-[#ff7c50]">Sooba · Cozinha</span>
+            <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] font-bold text-white/70">
+              <input type="checkbox" checked={soundEnabled} onChange={handleToggleSound} className="h-3.5 w-3.5" />
+              🔔 Som de pedido novo
+            </label>
+            <label className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${soundEnabled ? "text-white/70" : "text-white/30"}`}>
+              Volume
+              <input type="range" min={0} max={100} step={5} value={soundVolume} disabled={!soundEnabled} onChange={(e) => handleChangeSoundVolume(Number(e.target.value))} className="h-1.5 w-24 accent-[#ff5a19] disabled:opacity-40" />
+              <button type="button" onClick={() => { if (soundEnabled) playNewOrderChime(soundVolume / 100); }} disabled={!soundEnabled} title="Testar som" className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">▶ Testar</button>
+            </label>
+          </div>
+          <KitchenPanel orders={orders} locked onLockChange={setKitchenLocked} onForgotPin={handleForgotKitchenPin} ordersTimedOut={ordersTimedOut} />
+        </div>
+      </div>
+    );
+  }
+
   const now = new Date();
   const todayOrders = orders ? ordersInRange(orders, startOfDay(now)) : [];
   const weekOrders = orders ? ordersInRange(orders, startOfWeek(now)) : [];
@@ -970,6 +1018,8 @@ function Dashboard({ user }: { user: User }) {
         </> : ordersLoadingNotice)}
 
         {activeTab === "pedido" && (isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF) && <ManualOrderPanel customItems={customItems} dailyCombos={dailyCombos} soldOutIds={soldOutIds} hiddenIds={hiddenIds} priceOverrides={priceOverrides} nameOverrides={nameOverrides} deliveryFeeConfig={deliveryFeeConfig} />}
+
+        {activeTab === "cozinha" && kitchenAllowed && <KitchenPanel orders={orders} locked={false} onLockChange={setKitchenLocked} onForgotPin={handleForgotKitchenPin} ordersTimedOut={ordersTimedOut} />}
 
         {activeTab === "backup" && isDeveloper && <BackupPanel lastBackupAt={lastBackupAt} loadBackup={fetchBackup} loadOrders={fetchOrders} onBackupDone={setLastBackupAt} />}
 
