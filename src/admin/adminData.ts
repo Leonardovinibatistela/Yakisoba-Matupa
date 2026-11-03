@@ -14,6 +14,8 @@ export type OrderRecord = {
   notes: string;
   createdAt: Date;
   paymentMethod: "pix" | "cartao" | "debito" | "dinheiro" | "";
+  /** Talher que o cliente pediu (pedido antigo, sem esse campo, vem vazio). */
+  cutlery: "hashi" | "garfo" | "nenhum" | "";
   deliveryType: "retirada" | "entrega" | "";
   location: string;
   stockDeducted: boolean;
@@ -55,7 +57,7 @@ function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   return snapshot.docs.map((docSnap) => {
     const data = docSnap.data();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
-    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, deliveryFee: typeof data.deliveryFee === "number" ? data.deliveryFee : 0, notes: data.notes ?? "", createdAt, paymentMethod: data.paymentMethod ?? "", deliveryType: data.deliveryType ?? "", location: data.location ?? "", stockDeducted: data.stockDeducted ?? false, ingredientCost: data.ingredientCost ?? 0, missingRecipeItemIds: data.missingRecipeItemIds ?? [], incompleteCostItemIds: data.incompleteCostItemIds ?? [], deductedIngredients: data.deductedIngredients ?? [] };
+    return { id: docSnap.id, orderNumber: data.orderNumber ?? 0, customerName: data.customerName ?? "", customerPhone: data.customerPhone ?? "", items: data.items ?? [], total: data.total ?? 0, deliveryFee: typeof data.deliveryFee === "number" ? data.deliveryFee : 0, notes: data.notes ?? "", createdAt, paymentMethod: data.paymentMethod ?? "", cutlery: data.cutlery ?? "", deliveryType: data.deliveryType ?? "", location: data.location ?? "", stockDeducted: data.stockDeducted ?? false, ingredientCost: data.ingredientCost ?? 0, missingRecipeItemIds: data.missingRecipeItemIds ?? [], incompleteCostItemIds: data.incompleteCostItemIds ?? [], deductedIngredients: data.deductedIngredients ?? [] };
   });
 }
 

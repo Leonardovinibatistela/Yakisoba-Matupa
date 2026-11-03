@@ -1,4 +1,5 @@
 import type { OrderRecord } from "./adminData";
+import { buildReceiptLines, toPrinterText } from "./receiptLayout";
 
 // Impressão térmica (ESC/POS) via Web Bluetooth, direto do navegador — sem
 // precisar instalar nenhum programa. Só funciona no Chrome (Windows/Android);
@@ -77,85 +78,30 @@ export async function connectPrinter(): Promise<PrinterConnection> {
 const ESC = 0x1b;
 const GS = 0x1d;
 const CMD_INIT = [ESC, 0x40];
-const CMD_ALIGN_CENTER = [ESC, 0x61, 0x01];
-const CMD_ALIGN_LEFT = [ESC, 0x61, 0x00];
+const CMD_ALIGN = { left: [ESC, 0x61, 0x00], center: [ESC, 0x61, 0x01], right: [ESC, 0x61, 0x02] };
 const CMD_BOLD_ON = [ESC, 0x45, 0x01];
 const CMD_BOLD_OFF = [ESC, 0x45, 0x00];
-const CMD_DOUBLE_ON = [GS, 0x21, 0x11];
-const CMD_DOUBLE_OFF = [GS, 0x21, 0x00];
+const CMD_REVERSE_ON = [GS, 0x42, 0x01]; // letra branca em fundo preto (como os itens do modelo da loja)
+const CMD_REVERSE_OFF = [GS, 0x42, 0x00];
 const CMD_CUT = [GS, 0x56, 0x00];
-const LINE_WIDTH = 32; // colunas de texto numa impressora térmica de 58mm, fonte padrão
-const SOOBA_CNPJ = "62.321.249/0001-56";
+/** Tamanho da letra: largura e altura de 1 (normal) a 8 vezes. */
+const cmdSize = (w: number, h: number) => [GS, 0x21, ((Math.min(8, Math.max(1, w)) - 1) << 4) | (Math.min(8, Math.max(1, h)) - 1)];
 
 /** Tira acento (impressora térmica barata não entende UTF-8/acentuação). */
-const stripAccents = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x00-\x7F]/g, "");
+const textBytes = (text: string): number[] => Array.from(toPrinterText(text)).map((char) => char.charCodeAt(0) & 0xff);
 
-const textBytes = (text: string): number[] => Array.from(stripAccents(text)).map((char) => char.charCodeAt(0) & 0xff);
-
-const divider = (): number[] => [...textBytes("-".repeat(LINE_WIDTH)), 0x0a];
-
-/** Uma linha com texto à esquerda e à direita, tipo "2x Yakisoba ... R$36,90". */
-function row(left: string, right: string): number[] {
-  const leftText = stripAccents(left);
-  const rightText = stripAccents(right);
-  const bytes: number[] = [];
-  if (leftText.length + 1 + rightText.length > LINE_WIDTH) {
-    // Nome comprido: quebra em duas linhas — nome em cima, valor embaixo à direita.
-    bytes.push(...textBytes(leftText), 0x0a);
-    const pad = Math.max(0, LINE_WIDTH - rightText.length);
-    bytes.push(...textBytes(" ".repeat(pad) + rightText), 0x0a);
-  } else {
-    const pad = LINE_WIDTH - leftText.length - rightText.length;
-    bytes.push(...textBytes(leftText + " ".repeat(pad) + rightText), 0x0a);
-  }
-  return bytes;
-}
-
-const formatTotal = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-const PAYMENT_LABELS: Record<string, string> = { pix: "Pix", cartao: "Credito", debito: "Debito", dinheiro: "Dinheiro" };
-
-/** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora. */
+/** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora (o desenho está em receiptLayout.ts). */
 export function buildReceiptBytes(order: OrderRecord): Uint8Array {
-  const bytes: number[] = [];
-  bytes.push(...CMD_INIT);
-  bytes.push(...CMD_ALIGN_CENTER, ...CMD_BOLD_ON, ...CMD_DOUBLE_ON, ...textBytes("SOOBA"), 0x0a, ...CMD_DOUBLE_OFF);
-  bytes.push(...textBytes("Yakisoba e Sushi"), 0x0a, ...CMD_BOLD_OFF);
-  bytes.push(...textBytes(`CNPJ: ${SOOBA_CNPJ}`), 0x0a);
-  bytes.push(...CMD_BOLD_ON, ...textBytes(`Pedido #${order.orderNumber}`), 0x0a, ...CMD_BOLD_OFF);
-  bytes.push(...textBytes(order.createdAt.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })), 0x0a);
-  bytes.push(...CMD_ALIGN_LEFT);
-  bytes.push(...divider());
-  if (order.customerName || order.customerPhone) {
-    // O negrito precisa ligar já no começo da linha (antes de qualquer
-    // texto normal) — é assim que as outras linhas em negrito deste
-    // recibo (ex.: "Pedido #") funcionam; ligar no meio da linha, como
-    // era antes, não pega em impressoras clone mais simples. Maiúsculo
-    // reforça o destaque mesmo se algum modelo ainda ignorar o negrito.
-    bytes.push(...CMD_BOLD_ON, ...textBytes(`Cliente: ${(order.customerName || "-").toUpperCase()}`), ...CMD_BOLD_OFF, 0x0a);
-    if (order.customerPhone) bytes.push(...textBytes(`Whats: ${order.customerPhone}`), 0x0a);
-    bytes.push(...divider());
-  }
-  if (order.deliveryType === "entrega") {
-    bytes.push(...CMD_BOLD_ON, ...textBytes("ENTREGA"), 0x0a, ...CMD_BOLD_OFF);
-    const location = order.location.trim();
-    if (location) bytes.push(...textBytes(location), 0x0a);
-    bytes.push(...divider());
-  } else if (order.deliveryType === "retirada") {
-    bytes.push(...CMD_BOLD_ON, ...textBytes("RETIRADA NO LOCAL"), 0x0a, ...CMD_BOLD_OFF);
-    bytes.push(...divider());
-  }
-  if (order.notes.trim()) {
-    bytes.push(...CMD_BOLD_ON, ...textBytes("OBSERVACAO:"), 0x0a, ...textBytes(order.notes.trim()), 0x0a, ...CMD_BOLD_OFF);
-    bytes.push(...divider());
-  }
-  order.items.forEach((item) => {
-    bytes.push(...row(`${item.quantity}x ${item.name}`, formatTotal(item.lineTotal)));
+  const bytes: number[] = [...CMD_INIT];
+  buildReceiptLines(order).forEach((line) => {
+    bytes.push(...CMD_ALIGN[line.align], ...cmdSize(line.w, line.h));
+    line.parts.forEach((part) => {
+      // Liga/desliga negrito e fundo preto no começo de cada trecho (impressora clone mais simples não pega no meio da linha).
+      bytes.push(...(part.bold ? CMD_BOLD_ON : CMD_BOLD_OFF), ...(part.reverse ? CMD_REVERSE_ON : CMD_REVERSE_OFF), ...textBytes(part.text));
+    });
+    bytes.push(...CMD_REVERSE_OFF, ...CMD_BOLD_OFF, 0x0a, ...cmdSize(1, 1));
   });
-  bytes.push(...divider());
-  bytes.push(...CMD_BOLD_ON, ...row("TOTAL", formatTotal(order.total)), ...CMD_BOLD_OFF);
-  if (order.paymentMethod) bytes.push(...row("Pagamento:", PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod));
-  bytes.push(0x0a, 0x0a, 0x0a);
+  bytes.push(...CMD_ALIGN.left, 0x0a, 0x0a, 0x0a);
   bytes.push(...CMD_CUT);
   return new Uint8Array(bytes);
 }
