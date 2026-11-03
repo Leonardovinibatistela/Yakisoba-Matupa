@@ -1,5 +1,5 @@
-// Tela da cozinha (só regra — sem Firebase, pra dar pra testar sozinho): o que a ajudante precisa ver pra preparar os
-// pedidos, SEM nenhum valor em R$ (nem preço, nem total, nem forma de pagamento, nem telefone/endereço do cliente).
+// Tela da cozinha (só regra — sem Firebase, pra dar pra testar sozinho): tudo que quem cozinha precisa ver pra preparar e
+// entregar os pedidos (cliente, telefone, endereço, forma de pagamento...), SEM nenhum valor em R$ (nem preço, nem total, nem taxa).
 import type { OrderRecord } from "./adminData";
 import { ESTIMATED_MINUTES, parseOrderNotes } from "./receiptLayout";
 
@@ -29,15 +29,23 @@ export type KitchenTicket = {
   adapter: boolean;
   /** Observação do cliente/atendente já sem os trechos técnicos (pedido manual, talher, adaptador). */
   obs: string;
-  /** Primeiro nome do cliente (pra identificar o pedido); vazio quando é "Balcão"/"Cliente" ou sem nome. */
-  firstName: string;
+  /** Nome do cliente; vazio quando é "Balcão"/"Cliente" ou sem nome. */
+  customerName: string;
+  /** Telefone do cliente; vazio quando não tem. */
+  phone: string;
+  /** Endereço de entrega (só nos pedidos de entrega). */
+  address: string;
+  /** "Pix", "Crédito", "Débito" ou "Dinheiro"; vazio em pedido antigo sem forma de pagamento. */
+  payment: string;
   readyAt: Date | null;
   isNew: boolean;
   minutesAgo: number;
 };
 
 const CUTLERY_LABEL: Record<string, string> = { hashi: "Hashi", garfo: "Garfo", nenhum: "Sem talher" };
+const PAYMENT_LABEL: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro" };
 const GENERIC_NAMES = new Set(["balcao", "balcão", "cliente", "-", ""]);
+const clean = (value: string | undefined) => (value ?? "").trim().replace(/\s+/g, " ");
 
 function ticketItems(order: OrderRecord): KitchenItem[] {
   const items: KitchenItem[] = [];
@@ -64,7 +72,8 @@ function toTicket(order: OrderRecord, nowMs: number): KitchenTicket {
   const kind = order.deliveryType === "entrega" ? "entrega" : order.deliveryType === "retirada" ? "retirada" : "outro";
   const arrivedMs = order.createdAt.getTime();
   const cutlery = order.cutlery ? CUTLERY_LABEL[order.cutlery] ?? null : notes.cutlery;
-  const first = (order.customerName ?? "").trim().split(/\s+/)[0] ?? "";
+  const name = clean(order.customerName);
+  const phone = clean(order.customerPhone);
   const readyAt = order.kitchenReadyAt ?? null;
   const minutesAgo = Math.max(0, Math.floor((nowMs - arrivedMs) / 60000));
   return {
@@ -77,7 +86,10 @@ function toTicket(order: OrderRecord, nowMs: number): KitchenTicket {
     cutlery,
     adapter: notes.adapter,
     obs: notes.obs,
-    firstName: GENERIC_NAMES.has(first.toLowerCase()) ? "" : first,
+    customerName: GENERIC_NAMES.has(name.toLowerCase()) ? "" : name,
+    phone: phone === "-" ? "" : phone,
+    address: kind === "entrega" ? clean(order.location) : "",
+    payment: PAYMENT_LABEL[order.paymentMethod] ?? "",
     readyAt,
     isNew: readyAt === null && minutesAgo <= NEW_ARRIVAL_MINUTES,
     minutesAgo,

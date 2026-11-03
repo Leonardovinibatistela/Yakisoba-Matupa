@@ -23,9 +23,9 @@ type Props = {
 };
 
 /**
- * Aba "Cozinha": o que precisa ser preparado agora, pra quem cozinha — SEM nenhum valor (nem preço, nem total,
- * nem forma de pagamento, nem telefone ou endereço do cliente). Mostra o que chegou agora, a soma dos pratos pendentes
- * e a ficha de cada pedido com botão "Pronto". "Travar nesta tela" deixa só esta tela no aparelho, até digitar a senha.
+ * Aba "Cozinha": o que precisa ser preparado agora, pra quem cozinha — tudo do pedido (cliente, telefone, endereço,
+ * entregar ou retirar, forma de pagamento), SEM nenhum valor em R$ (nem preço, nem total, nem taxa). Mostra o que chegou
+ * agora, a soma dos pratos pendentes e a ficha de cada pedido com botão "Pronto". "Travar nesta tela" deixa só esta tela no aparelho, até digitar a senha.
  */
 export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin, ordersTimedOut }: Props) {
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -105,7 +105,7 @@ export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin
                 <ul className="mt-2 space-y-2">
                   {ready.map((ticket) => (
                     <li key={ticket.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
-                      <span className="min-w-0 truncate text-sm text-white/65"><span className="font-bold text-white/85">#{ticket.number}</span> · {ticket.kind === "retirada" ? "Retirada" : "Entrega"}{ticket.firstName ? ` · ${ticket.firstName}` : ""} · {ticket.items.map((item) => `${item.qty}x ${item.name}`).join(", ")}</span>
+                      <span className="min-w-0 truncate text-sm text-white/65"><span className="font-bold text-white/85">#{ticket.number}</span> · {ticket.kind === "retirada" ? "Retirada" : "Entrega"}{ticket.customerName ? ` · ${ticket.customerName}` : ""} · {ticket.items.map((item) => `${item.qty}x ${item.name}`).join(", ")}</span>
                       <button type="button" disabled={busyIds.has(ticket.id)} onClick={() => mark(ticket.id, false)} className="min-h-[40px] shrink-0 rounded-full border border-white/20 px-3.5 text-xs font-bold text-white/70 transition hover:border-white/40 hover:text-white disabled:opacity-50">↩ Desfazer</button>
                     </li>
                   ))}
@@ -124,14 +124,25 @@ function TicketCard({ ticket, nowMs, busy, onReady }: { ticket: KitchenTicket; n
   return (
     <article className={`rounded-2xl border p-4 sm:p-5 ${ticket.isNew ? "border-[#ff5a19] bg-[#ff5a19]/10" : "border-white/10 bg-[#171211]"}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        <span className="font-display text-2xl font-extrabold tracking-[-.03em]">#{ticket.number}</span>
-        <span className={`rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-wide ${ticket.kind === "retirada" ? "bg-amber-400/15 text-amber-200" : "bg-sky-400/15 text-sky-200"}`}>{ticket.kind === "retirada" ? "Retirada" : "Entrega"}</span>
+        <span className="font-display text-3xl font-extrabold tracking-[-.03em]">#{ticket.number}</span>
         {ticket.isNew && <span className="animate-pulse rounded-full bg-[#ff5a19] px-2.5 py-1 text-[11px] font-extrabold uppercase text-white">Novo</span>}
-        {ticket.firstName && <span className="text-sm font-bold capitalize text-white/70">{ticket.firstName.toLowerCase()}</span>}
         <span className="ml-auto text-right text-xs font-semibold leading-snug text-white/55">Chegou {storeClock(ticket.arrivedAt.getTime())} · {agoLabel(ticket.minutesAgo)}<br /><span className={late ? "font-extrabold text-red-300" : ""}>Previsto {storeClock(ticket.dueAt.getTime())}{late ? " · atrasado" : ""}</span></span>
       </div>
 
-      <ul className="mt-3 space-y-2">
+      {/* Entregar ou retirar: o que a equipe mais precisa saber de cara, em letra grande (igual ao recibo). */}
+      <p className={`mt-3 rounded-xl px-4 py-2.5 text-center text-xl font-extrabold uppercase tracking-wide text-black sm:text-2xl ${ticket.kind === "retirada" ? "bg-amber-400" : ticket.kind === "entrega" ? "bg-sky-400" : "bg-white/70"}`}>
+        {ticket.kind === "retirada" ? "🏪 Retirar no local" : ticket.kind === "entrega" ? "🛵 Entregar" : "Pedido"}
+      </p>
+
+      {(ticket.customerName || ticket.phone || ticket.address || ticket.payment) && (
+        <div className="mt-3 space-y-0.5 text-base font-bold leading-snug">
+          {(ticket.customerName || ticket.phone) && <p>👤 {ticket.customerName}{ticket.customerName && ticket.phone ? " · " : ""}<span className="whitespace-nowrap">{ticket.phone}</span></p>}
+          {ticket.address && <p className="text-white/90">📍 {ticket.address}</p>}
+          {ticket.payment && <p className="text-white/70">💳 Pagamento: {ticket.payment}</p>}
+        </div>
+      )}
+
+      <ul className="mt-3 space-y-2 border-t border-white/10 pt-3">
         {ticket.items.map((item, index) => (
           <li key={index}>
             <p className="flex items-baseline gap-2 text-lg font-extrabold leading-snug"><span className="min-w-[2.5rem] text-[#ff8b60]">{item.qty}x</span><span>{item.name}</span></p>
