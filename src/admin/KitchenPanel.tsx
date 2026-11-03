@@ -3,7 +3,13 @@ import type { OrderRecord } from "./adminData";
 import { setOrderReady } from "./kitchen";
 import { hasKitchenPin, isValidPin, lockKitchen, unlockKitchen } from "./kitchenLock";
 import { buildTickets, productionSummary, type KitchenTicket } from "./kitchenView";
+import { whatsappReadyLink } from "./kitchenWhatsapp";
 import { storeClock } from "./siteDiagnostics";
+
+// "Abrir o WhatsApp ao apertar Pronto": ligado por padrão; a escolha fica guardada neste aparelho.
+const WHATSAPP_AUTO_KEY = "sooba_kitchen_wa_auto";
+const readWhatsappAuto = () => { try { return localStorage.getItem(WHATSAPP_AUTO_KEY) !== "0"; } catch { return true; } };
+const saveWhatsappAuto = (on: boolean) => { try { localStorage.setItem(WHATSAPP_AUTO_KEY, on ? "1" : "0"); } catch { /* sem armazenamento: vale só até recarregar */ } };
 
 const digitsOnly = (value: string) => value.replace(/\D/g, "").slice(0, 4);
 const pinInputClass = "min-h-[48px] w-32 rounded-lg border border-white/15 bg-white/[0.06] px-3 text-center text-xl font-extrabold tracking-[.4em] text-white outline-none placeholder:tracking-normal placeholder:text-white/30 focus:border-[#ff6b32]";
@@ -39,16 +45,32 @@ export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [showReady, setShowReady] = useState(false);
+  const [whatsappAuto, setWhatsappAuto] = useState(readWhatsappAuto);
+  const [notice, setNotice] = useState("");
 
-  const mark = async (id: string, isReady: boolean) => {
+  const toggleWhatsappAuto = (on: boolean) => { setWhatsappAuto(on); saveWhatsappAuto(on); };
+
+  // Depois de salvar o "Pronto", abre a conversa do cliente no WhatsApp com a mensagem pronta (é só apertar enviar).
+  const openWhatsapp = (ticket: KitchenTicket) => {
+    if (!ticket.phone) return;
+    const link = whatsappReadyLink(ticket);
+    if (!link) return setNotice(`O telefone do pedido #${ticket.number} (${ticket.phone}) não parece de WhatsApp. Avise o cliente de outro jeito.`);
+    const opened = window.open(link, "_blank");
+    if (opened) opened.opener = null;
+    else setNotice("O navegador bloqueou a abertura do WhatsApp. Em “Prontos hoje”, toque em 📲 Avisar no WhatsApp.");
+  };
+
+  const mark = async (ticket: KitchenTicket, isReady: boolean) => {
     setError("");
-    setBusyIds((previous) => new Set(previous).add(id));
+    setNotice("");
+    setBusyIds((previous) => new Set(previous).add(ticket.id));
     try {
-      await setOrderReady(id, isReady);
+      await setOrderReady(ticket.id, isReady);
+      if (isReady && whatsappAuto) openWhatsapp(ticket);
     } catch {
       setError("Não consegui salvar. Confira a internet e tente de novo.");
     } finally {
-      setBusyIds((previous) => { const next = new Set(previous); next.delete(id); return next; });
+      setBusyIds((previous) => { const next = new Set(previous); next.delete(ticket.id); return next; });
     }
   };
 
@@ -62,7 +84,13 @@ export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin
         <LockControls locked={locked} onLockChange={onLockChange} onForgotPin={onForgotPin} />
       </div>
 
+      <label className="mt-3 inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-xs font-bold text-white/70">
+        <input type="checkbox" checked={whatsappAuto} onChange={(event) => toggleWhatsappAuto(event.target.checked)} className="h-4 w-4 accent-emerald-500" />
+        📲 Ao apertar Pronto, abrir o WhatsApp do cliente com o aviso pronto
+      </label>
+
       {error && <p role="alert" className="mt-3 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200">{error}</p>}
+      {notice && <p role="status" className="mt-3 rounded-xl border border-amber-300/40 bg-amber-300/10 px-4 py-2.5 text-sm font-bold text-amber-100">{notice}</p>}
 
       {orders === null ? (
         <div className="mt-5 rounded-2xl border border-white/10 bg-[#171211] p-6 text-center">
@@ -85,14 +113,14 @@ export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin
           {arriving.length > 0 && (
             <section aria-label="Chegou agora" className="mt-5">
               <p className="text-sm font-extrabold uppercase tracking-[.14em] text-[#ff8b60]">🔔 Chegou agora ({arriving.length})</p>
-              <div className="mt-2 space-y-3">{arriving.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} nowMs={nowMs} busy={busyIds.has(ticket.id)} onReady={() => mark(ticket.id, true)} />)}</div>
+              <div className="mt-2 space-y-3">{arriving.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} nowMs={nowMs} busy={busyIds.has(ticket.id)} onReady={() => mark(ticket, true)} />)}</div>
             </section>
           )}
 
           {pending.length > 0 && (
             <section aria-label="Na fila" className="mt-5">
               <p className="text-sm font-extrabold uppercase tracking-[.14em] text-white/60">Na fila ({pending.length}) · o mais antigo primeiro</p>
-              <div className="mt-2 space-y-3">{pending.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} nowMs={nowMs} busy={busyIds.has(ticket.id)} onReady={() => mark(ticket.id, true)} />)}</div>
+              <div className="mt-2 space-y-3">{pending.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} nowMs={nowMs} busy={busyIds.has(ticket.id)} onReady={() => mark(ticket, true)} />)}</div>
             </section>
           )}
 
@@ -103,12 +131,22 @@ export default function KitchenPanel({ orders, locked, onLockChange, onForgotPin
               <button type="button" onClick={() => setShowReady((value) => !value)} aria-expanded={showReady} className="text-xs font-bold uppercase tracking-[.14em] text-white/50 transition hover:text-white/80">{showReady ? "▾" : "▸"} Prontos hoje ({ready.length})</button>
               {showReady && (
                 <ul className="mt-2 space-y-2">
-                  {ready.map((ticket) => (
-                    <li key={ticket.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
-                      <span className="min-w-0 truncate text-sm text-white/65"><span className="font-bold text-white/85">#{ticket.number}</span> · {ticket.kind === "retirada" ? "Retirada" : "Entrega"}{ticket.customerName ? ` · ${ticket.customerName}` : ""} · {ticket.items.map((item) => `${item.qty}x ${item.name}`).join(", ")}</span>
-                      <button type="button" disabled={busyIds.has(ticket.id)} onClick={() => mark(ticket.id, false)} className="min-h-[40px] shrink-0 rounded-full border border-white/20 px-3.5 text-xs font-bold text-white/70 transition hover:border-white/40 hover:text-white disabled:opacity-50">↩ Desfazer</button>
-                    </li>
-                  ))}
+                  {ready.map((ticket) => {
+                    const whatsappLink = whatsappReadyLink(ticket);
+                    return (
+                      <li key={ticket.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
+                        <span className="min-w-0 flex-1 basis-[12rem] truncate text-sm text-white/65"><span className="font-bold text-white/85">#{ticket.number}</span> · {ticket.kind === "retirada" ? "Retirada" : "Entrega"}{ticket.customerName ? ` · ${ticket.customerName}` : ""} · {ticket.items.map((item) => `${item.qty}x ${item.name}`).join(", ")}</span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {whatsappLink ? (
+                            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[40px] items-center rounded-full border border-emerald-400/50 px-3.5 text-xs font-bold text-emerald-200 transition hover:border-emerald-300 hover:text-white">📲 Avisar no WhatsApp</a>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-white/35">{ticket.phone ? "Telefone sem WhatsApp" : "Sem telefone"}</span>
+                          )}
+                          <button type="button" disabled={busyIds.has(ticket.id)} onClick={() => mark(ticket, false)} className="min-h-[40px] shrink-0 rounded-full border border-white/20 px-3.5 text-xs font-bold text-white/70 transition hover:border-white/40 hover:text-white disabled:opacity-50">↩ Desfazer</button>
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
