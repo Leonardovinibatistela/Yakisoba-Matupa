@@ -60,9 +60,9 @@ const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
 // A aba "Pedido manual" está liberada pra equipe da loja (true). Pra voltar a mostrar só pra quem cuida do sistema, é só
 // trocar pra false.
 const MANUAL_ORDER_TAB_FOR_STAFF = true;
-// A aba "Cozinha" (pra quem ajuda a cozinhar: só o que preparar, sem nenhum valor, e dá pra travar o aparelho nela) ainda
-// está só pra quem cuida do sistema. Quando o dono autorizar, é só trocar pra true.
-const KITCHEN_TAB_FOR_STAFF = false;
+// A aba "Cozinha" (pra quem ajuda a cozinhar: só o que preparar, sem nenhum valor, e dá pra travar o aparelho nela) está
+// liberada pra equipe da loja (true), autorizado pelo dono. Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
+const KITCHEN_TAB_FOR_STAFF = true;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
