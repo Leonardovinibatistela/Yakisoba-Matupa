@@ -39,8 +39,7 @@ import ImportPanel from "./ImportPanel";
 import { fetchBackup, fetchOrders } from "./backupData";
 import { isBackupOverdue } from "./backupFormat";
 import ShoppingList from "./ShoppingList";
-import ManualOrderPanel from "./ManualOrderPanel";
-import KitchenPanel from "./KitchenPanel";
+import KitchenWorkspace from "./KitchenWorkspace";
 import { isKitchenLocked, resetKitchenLock } from "./kitchenLock";
 import { subscribeConnection } from "./connectionHealth";
 import { actionNotice, buildDiagnosticText, clockIssues, connectionNotice, storeClock, type ActionLog, type ConnectionState, type Notice } from "./siteDiagnostics";
@@ -51,14 +50,14 @@ const plainLabel = (label: string) => label.replace(/^[^\p{L}]+/u, "");
 
 // Abas do painel — só organiza como as coisas aparecem na tela (menos
 // rolagem, cada assunto na sua página). Não mexe em nenhum dado.
-type AdminTab = "visao" | "pedido" | "cozinha" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
+type AdminTab = "visao" | "cozinha" | "cardapio" | "combos" | "estoque" | "financeiro" | "backup" | "importar";
 const PAYMENT_METHOD_LABELS: Record<string, string> = { pix: "Pix", cartao: "Crédito", debito: "Débito", dinheiro: "Dinheiro" };
 
 // As abas Backup e Importar só aparecem pra quem cuida do sistema (é só a tela que some — quem administra o
 // site continua sendo quem está nas regras do Firebase). Em minúsculas, igual o Firebase devolve o e-mail.
 const DEVELOPER_TAB_EMAILS = ["lv6696184@gmail.com"];
-// A aba "Pedido manual" está liberada pra equipe da loja (true). Pra voltar a mostrar só pra quem cuida do sistema, é só
-// trocar pra false.
+// O "Pedido manual" (que fica dentro da aba Cozinha, junto com a lista de pedidos) está liberado pra equipe da loja (true).
+// Pra voltar a mostrar só pra quem cuida do sistema, é só trocar pra false.
 const MANUAL_ORDER_TAB_FOR_STAFF = true;
 // A aba "Cozinha" (pra quem ajuda a cozinhar: só o que preparar, sem nenhum valor, e dá pra travar o aparelho nela) está
 // liberada pra equipe da loja (true), autorizado pelo dono. Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
@@ -66,14 +65,12 @@ const KITCHEN_TAB_FOR_STAFF = true;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
-  ...(MANUAL_ORDER_TAB_FOR_STAFF ? [] : (["pedido"] as AdminTab[])),
   ...(KITCHEN_TAB_FOR_STAFF ? [] : (["cozinha"] as AdminTab[])),
 ];
 
 const ADMIN_TABS: { id: AdminTab; label: string }[] = [
   { id: "visao", label: "Visão geral" },
-  { id: "pedido", label: "Pedido manual" },
-  { id: "cozinha", label: "Cozinha" },
+  { id: "cozinha", label: "Cozinha e pedido manual" },
   { id: "cardapio", label: "Cardápio" },
   { id: "combos", label: "Combos do dia" },
   { id: "estoque", label: "Estoque" },
@@ -157,8 +154,6 @@ function Dashboard({ user }: { user: User }) {
   const manualOrderAllowed = isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF;
   // Aparelho travado na Cozinha: só aquela tela aparece (sem faturamento, financeiro, estoque…) até digitar a senha.
   const [kitchenLocked, setKitchenLocked] = useState(() => kitchenAllowed && isKitchenLocked());
-  // Com a tela travada, quem está na cozinha alterna entre a lista de pedidos e o "Pedido manual" (só se precisar lançar um).
-  const [lockedView, setLockedView] = useState<"cozinha" | "pedido">("cozinha");
   const [activeTab, setActiveTab] = useState<AdminTab>("visao");
   const [orders, setOrders] = useState<OrderRecord[] | null>(null);
   const [error, setError] = useState("");
@@ -696,6 +691,8 @@ function Dashboard({ user }: { user: User }) {
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
 
+  const manualOrderProps = manualOrderAllowed ? { customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig } : null;
+
   const handleForgotKitchenPin = () => {
     resetKitchenLock();
     setKitchenLocked(false);
@@ -724,22 +721,7 @@ function Dashboard({ user }: { user: User }) {
               <button type="button" onClick={() => { if (soundEnabled) playNewOrderChime(soundVolume / 100); }} disabled={!soundEnabled} title="Testar som" className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">▶ Testar</button>
             </label>
           </div>
-          {manualOrderAllowed && (
-            <div role="tablist" aria-label="Tela" className="mt-3 grid grid-cols-2 gap-2">
-              {([["cozinha", "🍳 Cozinha"], ["pedido", "📝 Pedido manual"]] as const).map(([id, label]) => (
-                <button key={id} type="button" role="tab" aria-selected={lockedView === id} onClick={() => setLockedView(id)} className={`min-h-[48px] rounded-full border px-4 text-sm font-extrabold transition ${lockedView === id ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>{label}</button>
-              ))}
-            </div>
-          )}
-          {/* As duas telas ficam montadas (só escondidas): dá pra olhar a cozinha no meio de um pedido manual sem perder o que foi digitado. */}
-          <div className={manualOrderAllowed && lockedView === "pedido" ? "hidden" : ""}>
-            <KitchenPanel orders={orders} locked onLockChange={setKitchenLocked} onForgotPin={handleForgotKitchenPin} ordersTimedOut={ordersTimedOut} />
-          </div>
-          {manualOrderAllowed && (
-            <div className={lockedView === "pedido" ? "" : "hidden"}>
-              <ManualOrderPanel customItems={customItems} dailyCombos={dailyCombos} soldOutIds={soldOutIds} hiddenIds={hiddenIds} priceOverrides={priceOverrides} nameOverrides={nameOverrides} deliveryFeeConfig={deliveryFeeConfig} />
-            </div>
-          )}
+          <KitchenWorkspace kitchen={{ orders, locked: true, onLockChange: setKitchenLocked, onForgotPin: handleForgotKitchenPin, ordersTimedOut }} manualOrder={manualOrderProps} />
         </div>
       </div>
     );
@@ -1035,9 +1017,7 @@ function Dashboard({ user }: { user: User }) {
 
         </> : ordersLoadingNotice)}
 
-        {activeTab === "pedido" && manualOrderAllowed && <ManualOrderPanel customItems={customItems} dailyCombos={dailyCombos} soldOutIds={soldOutIds} hiddenIds={hiddenIds} priceOverrides={priceOverrides} nameOverrides={nameOverrides} deliveryFeeConfig={deliveryFeeConfig} />}
-
-        {activeTab === "cozinha" && kitchenAllowed && <KitchenPanel orders={orders} locked={false} onLockChange={setKitchenLocked} onForgotPin={handleForgotKitchenPin} ordersTimedOut={ordersTimedOut} />}
+        {activeTab === "cozinha" && kitchenAllowed && <KitchenWorkspace kitchen={{ orders, locked: false, onLockChange: setKitchenLocked, onForgotPin: handleForgotKitchenPin, ordersTimedOut }} manualOrder={manualOrderProps} />}
 
         {activeTab === "backup" && isDeveloper && <BackupPanel lastBackupAt={lastBackupAt} loadBackup={fetchBackup} loadOrders={fetchOrders} onBackupDone={setLastBackupAt} />}
 
