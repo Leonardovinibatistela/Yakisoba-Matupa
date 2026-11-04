@@ -290,8 +290,9 @@ function Dashboard({ user }: { user: User }) {
       try {
         const response = await fetch(`${window.location.pathname}?v=${Date.now()}`, { cache: "no-store" });
         const dateHeader = response.headers.get("date");
-        const age = Number(response.headers.get("age") ?? 0);
-        if (dateHeader && !Number.isNaN(Date.parse(dateHeader))) setServerClock({ serverMs: Date.parse(dateHeader) + (Number.isFinite(age) ? age * 1000 : 0), readAt: Date.now() });
+        // Só o "date": o cache do GitHub Pages já devolve a hora de agora nele, e o "age" é há quanto tempo a cópia está guardada
+        // (até 10 min). Somar os dois adiantava a hora certa e fazia o painel acusar um relógio "atrasado" que estava certo.
+        if (dateHeader && !Number.isNaN(Date.parse(dateHeader))) setServerClock({ serverMs: Date.parse(dateHeader), readAt: Date.now() });
         const latest = /<meta name="build-id" content="([a-z0-9]+)"/.exec(await response.text())?.[1];
         if (latest) {
           setLatestBuildId(latest);
