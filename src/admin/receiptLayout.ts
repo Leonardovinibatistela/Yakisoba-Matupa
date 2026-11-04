@@ -10,7 +10,7 @@ export const STORE_NAME = "SOOBA YAKISOBA E SUSHI";
 export const STORE_PHONE = "(66) 99202-6783";
 export const STORE_CNPJ = "62.321.249/0001-56";
 /** Minutos entre a hora do pedido e o "PREVISTO PARA" impresso. */
-export const ESTIMATED_MINUTES = { entrega: 40, retirada: 30 } as const;
+export const ESTIMATED_MINUTES = { entrega: 45, retirada: 45 } as const;
 /** Horário de Matupá (UTC-4, sem horário de verão): o recibo sai sempre nele, não no fuso do computador que imprime. */
 const STORE_OFFSET_MINUTES = 240;
 

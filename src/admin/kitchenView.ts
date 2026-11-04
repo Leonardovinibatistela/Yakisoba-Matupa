@@ -20,7 +20,7 @@ export type KitchenTicket = {
   id: string;
   number: number;
   arrivedAt: Date;
-  /** Hora prevista pra ficar pronto (mesma conta do recibo: +40 min entrega, +30 retirada). */
+  /** Hora prevista pra ficar pronto (mesma conta do recibo: ESTIMATED_MINUTES depois da hora do pedido). */
   dueAt: Date;
   kind: "entrega" | "retirada" | "outro";
   items: KitchenItem[];

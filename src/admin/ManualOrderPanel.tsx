@@ -140,7 +140,7 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
         // O botão fica lá embaixo e o aviso de sucesso no topo: leva a tela até o aviso.
         topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       })
-      .catch(() => setError(`${SAVE_FAILED} Seus dados continuam na tela. Antes de tentar de novo, confira na "Visão geral" se o pedido já não apareceu.`))
+      .catch(() => setError(`${SAVE_FAILED} Seus dados continuam na tela. Antes de tentar de novo, confira na Cozinha (ou na "Visão geral") se o pedido já não apareceu.`))
       .finally(() => setSubmitting(false));
   };
 
@@ -170,7 +170,7 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
       <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Lançar pedido de telefone, WhatsApp ou balcão</h2>
       <p className="mt-1.5 text-sm text-white/50">Escolha os itens, preencha os dados e registre. O pedido entra igual ao do site: toca o sininho, imprime (se a impressora estiver ligada), desconta o estoque e entra no Financeiro. Funciona mesmo com o site fechado.</p>
 
-      {done && <p role="status" className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">✓ Pedido #{done.orderNumber} registrado — {money(done.total)}. Já aparece na "Visão geral".</p>}
+      {done && <p role="status" className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">✓ Pedido #{done.orderNumber} registrado — {money(done.total)}. Já aparece na Cozinha e na "Visão geral".</p>}
 
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <div>
