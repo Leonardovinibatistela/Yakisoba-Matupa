@@ -49,6 +49,8 @@ export type CatalogInput = {
   priceOverrides: Record<string, number>;
   nameOverrides: Record<string, string>;
   today: Date;
+  /** Devolve também as seções sem nenhum item visível (o painel precisa delas pra aplicar a ordem do cardápio antes de esconder as vazias). */
+  keepEmptySections?: boolean;
 };
 
 const toCatalogItem = (item: MenuItem, input: CatalogInput): CatalogItem => ({
@@ -67,7 +69,7 @@ export function buildCatalog(input: CatalogInput): { sections: CatalogSection[];
   if (todaysCombos.length > 0) sections.push({ id: "promo-do-dia", title: "Promoção do dia", items: todaysCombos.map((combo) => toCatalogItem(combo, input)), allowsAddons: false });
   input.menuSections.forEach((section) => {
     const items = [...section.items, ...input.customItems.filter((item) => item.sectionId === section.id)].filter((item) => !input.hiddenIds.has(item.id));
-    if (items.length > 0) sections.push({ id: section.id, title: section.eyebrow, items: items.map((item) => toCatalogItem(item, input)), allowsAddons: YAKI_SECTION_IDS.includes(section.id) });
+    if (items.length > 0 || input.keepEmptySections) sections.push({ id: section.id, title: section.eyebrow, items: items.map((item) => toCatalogItem(item, input)), allowsAddons: YAKI_SECTION_IDS.includes(section.id) });
   });
   const addons = input.addonSections.map((section) => ({ id: section.id, title: section.eyebrow, items: section.items.filter((item) => !input.hiddenIds.has(item.id)).map((item) => toCatalogItem(item, input)), allowsAddons: false }));
   return { sections, addons };

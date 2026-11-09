@@ -11,6 +11,9 @@ import { clearItemName, setItemName, subscribeNameOverrides } from "../nameOverr
 import { clearItemDescription, setItemDescription, subscribeDescriptionOverrides } from "../descriptionOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
+import { arrangeSections, compatibleSectionIds, moveItemInSection, moveItemToSection, moveSection, snapshotLayout, type MenuLayout } from "../menuLayout";
+import { resetMenuLayout, saveMenuLayout, subscribeMenuLayout } from "../menuLayoutStore";
+import { YAKI_SECTION_IDS } from "./manualOrderLogic";
 import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
 import { setManualClose, subscribeManualClose } from "../manualClose";
@@ -330,6 +333,12 @@ function Dashboard({ user }: { user: User }) {
 
   const [manualCloseInfo, setManualCloseInfo] = useState<ManualCloseInfo>({ closed: false, closedAt: null });
   useEffect(() => subscribeManualClose(setManualCloseInfo), []);
+  // Ordem do cardápio (ver menuLayout.ts): o dono sobe/desce itens, move item pra outra seção e sobe/desce seções.
+  const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
+  useEffect(() => subscribeMenuLayout(setMenuLayout, () => setMenuLayout(null)), []);
+  const [organizing, setOrganizing] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
+  const [layoutSaving, setLayoutSaving] = useState(false);
   // Status + botões do site (ver siteControl.ts): botão principal (abrir/fechar AGORA) e o botão "Hoje não vamos abrir".
   // Atualiza junto com o relógio (clockTick), então o texto e os botões mudam sozinhos na hora de abrir/fechar.
   const [togglingSite, setTogglingSite] = useState(false);
@@ -692,7 +701,7 @@ function Dashboard({ user }: { user: User }) {
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
 
-  const manualOrderProps = manualOrderAllowed ? { customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig } : null;
+  const manualOrderProps = manualOrderAllowed ? { customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig, menuLayout } : null;
 
   const handleForgotKitchenPin = () => {
     resetKitchenLock();
@@ -727,6 +736,25 @@ function Dashboard({ user }: { user: User }) {
       </div>
     );
   }
+
+  // Cardápio do painel já na ordem escolhida (itens de fábrica + os que o admin adicionou, mesmo os excluídos do site).
+  const arrangedMenuSections = arrangeSections(menuSections.map((section) => ({ ...section, items: [...section.items, ...customItems.filter((item) => item.sectionId === section.id)] })), menuLayout);
+  const currentLayout = snapshotLayout(arrangedMenuSections);
+  const applyLayout = (next: MenuLayout) => {
+    if (next === currentLayout) return;
+    setLayoutError("");
+    setLayoutSaving(true);
+    saveMenuLayout(next).catch(() => setLayoutError("Não consegui salvar a ordem. Confira a internet e tente de novo.")).finally(() => setLayoutSaving(false));
+  };
+  const handleMoveItem = (sectionId: string, itemId: string, delta: -1 | 1) => applyLayout(moveItemInSection(currentLayout, sectionId, itemId, delta));
+  const handleMoveItemToSection = (itemId: string, toSectionId: string) => applyLayout(moveItemToSection(currentLayout, itemId, toSectionId));
+  const handleMoveSection = (sectionId: string, delta: -1 | 1) => applyLayout(moveSection(currentLayout, sectionId, delta));
+  const handleResetLayout = () => {
+    if (!window.confirm("Voltar o cardápio pra ordem de fábrica? Os itens e as seções voltam pros lugares de antes. Dá pra organizar de novo depois.")) return;
+    setLayoutError("");
+    setLayoutSaving(true);
+    resetMenuLayout().catch(() => setLayoutError("Não consegui voltar a ordem. Confira a internet e tente de novo.")).finally(() => setLayoutSaving(false));
+  };
 
   const now = new Date();
   const todayOrders = orders ? ordersInRange(orders, startOfDay(now)) : [];
@@ -1062,23 +1090,37 @@ function Dashboard({ user }: { user: User }) {
           <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Preços e disponibilidade</h2>
           <p className="mt-1.5 text-sm text-white/50">Acabou algum ingrediente? Marca como esgotado que o item some do "Adicionar ao pedido" no site na hora. Preço subiu? Edita direto aqui. Não vende mais esse item? "Excluir do site" tira ele do cardápio sem apagar nada — dá pra restaurar quando quiser.</p>
           <div className="mt-5 space-y-6">
-            {menuSections.map((section) => {
-              const sectionCustomItems = customItems.filter((item) => item.sectionId === section.id);
-              const sectionItems: { id: string; name: string; description?: string; price: number; image?: string }[] = [...section.items, ...sectionCustomItems];
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setOrganizing((value) => !value)} aria-pressed={organizing} className={`min-h-[44px] rounded-full border px-4 text-xs font-bold transition ${organizing ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>{organizing ? "✓ Terminei de organizar" : "↕ Organizar o cardápio"}</button>
+              {organizing && <button type="button" onClick={handleResetLayout} disabled={menuLayout === null || layoutSaving} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Voltar à ordem de fábrica</button>}
+              {organizing && <p className="basis-full text-xs leading-relaxed text-white/50">Use ▲ ▼ pra subir e descer os itens e as seções. Em "Mover para" você troca o item de seção (yakisoba só vai pra outra seção de yakisoba). Cada toque já vale no site na hora, pra todos os clientes.</p>}
+              {layoutError && <p role="alert" className="basis-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200">{layoutError}</p>}
+            </div>
+            {arrangedMenuSections.map((section, sectionIndex) => {
+              const sectionItems: { id: string; name: string; description?: string; price: number; image?: string }[] = section.items;
               const sectionItemIds = sectionItems.map((item) => item.id);
+              const moveTargets = compatibleSectionIds(section.id, arrangedMenuSections.map((other) => other.id), YAKI_SECTION_IDS).map((id) => arrangedMenuSections.find((other) => other.id === id)!);
               const allSoldOut = sectionItemIds.every((id) => soldOutIds.has(id));
               const isTogglingSection = togglingSectionId === section.id;
               return (
               <div key={section.id}>
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{section.eyebrow}</p>
+                    {organizing && (
+                      <>
+                        <button type="button" onClick={() => handleMoveSection(section.id, -1)} disabled={sectionIndex === 0} aria-label={`Subir a seção ${section.eyebrow}`} className="grid h-9 w-9 place-items-center rounded-full border border-white/20 text-xs font-bold text-white/80 transition hover:border-white/50 disabled:cursor-not-allowed disabled:opacity-30">▲</button>
+                        <button type="button" onClick={() => handleMoveSection(section.id, 1)} disabled={sectionIndex === arrangedMenuSections.length - 1} aria-label={`Descer a seção ${section.eyebrow}`} className="grid h-9 w-9 place-items-center rounded-full border border-white/20 text-xs font-bold text-white/80 transition hover:border-white/50 disabled:cursor-not-allowed disabled:opacity-30">▼</button>
+                      </>
+                    )}
+                  </div>
                   <button type="button" onClick={() => handleToggleSection(section.id, sectionItemIds, !allSoldOut)} disabled={isTogglingSection} className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${allSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>
                     {isTogglingSection ? "…" : allSoldOut ? "Reativar todos" : "Marcar todos esgotados"}
                   </button>
                 </div>
                 <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
-                  {sectionItems.map((item) => {
-                    const isCustom = sectionCustomItems.some((custom) => custom.id === item.id);
+                  {sectionItems.map((item, itemIndex) => {
+                    const isCustom = customItems.some((custom) => custom.id === item.id);
                     const isSoldOut = soldOutIds.has(item.id);
                     const isToggling = togglingItemId === item.id;
                     const isRemoving = removingItemId === item.id;
@@ -1147,6 +1189,22 @@ function Dashboard({ user }: { user: User }) {
                             <button type="button" onClick={() => handleToggleHidden(item.id, item.name, isHidden)} disabled={isTogglingHidden} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isTogglingHidden ? "…" : isHidden ? "↩️ Restaurar no site" : "🗑 Excluir do site"}</button>
                           )}
                         </div>
+                        {organizing && (
+                          <div className="flex w-full flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                            <span className="text-[10px] font-bold uppercase tracking-[.14em] text-white/40">Posição</span>
+                            <button type="button" onClick={() => handleMoveItem(section.id, item.id, -1)} disabled={itemIndex === 0} aria-label={`Subir ${currentName}`} className="min-h-[40px] rounded-full border border-white/20 px-3.5 text-xs font-bold text-white/80 transition hover:border-white/50 disabled:cursor-not-allowed disabled:opacity-30">▲ Subir</button>
+                            <button type="button" onClick={() => handleMoveItem(section.id, item.id, 1)} disabled={itemIndex === sectionItems.length - 1} aria-label={`Descer ${currentName}`} className="min-h-[40px] rounded-full border border-white/20 px-3.5 text-xs font-bold text-white/80 transition hover:border-white/50 disabled:cursor-not-allowed disabled:opacity-30">▼ Descer</button>
+                            {moveTargets.length > 0 && (
+                              <label className="ml-auto inline-flex items-center gap-2 text-[11px] font-bold text-white/50">
+                                Mover para
+                                <select value="" onChange={(event) => { if (event.target.value) handleMoveItemToSection(item.id, event.target.value); }} aria-label={`Mover ${currentName} para outra seção`} className="min-h-[40px] rounded-lg border border-white/15 bg-[#171211] px-2 text-xs font-bold text-white outline-none focus:border-[#ff6b32]">
+                                  <option value="">escolher seção…</option>
+                                  {moveTargets.map((target) => <option key={target.id} value={target.id}>{target.eyebrow}</option>)}
+                                </select>
+                              </label>
+                            )}
+                          </div>
+                        )}
                         {expandedRecipeItemId === item.id && <div className="w-full"><RecipeEditor itemId={item.id} itemName={currentName} ingredients={ingredients} recipe={recipes[item.id] ?? []} recipes={recipes} itemCatalog={itemCatalog} onSave={setRecipe} onCreateIngredient={addIngredient} /></div>}
                       </div>
                     );

@@ -3,6 +3,7 @@ import { addonSections, menuSections } from "../menuData";
 import type { CustomMenuItem } from "../customItems";
 import type { DailyCombo } from "../dailyCombos";
 import { flatDeliveryFee, type DeliveryFeeConfig } from "../deliveryFeeRule";
+import { arrangeSections, type MenuLayout } from "../menuLayout";
 import { newOrderId, registerOrderWithRetry } from "../orders";
 import { SAVE_FAILED, normalize, parseNumber, toDraft, withTimeout } from "./stockFormat";
 import {
@@ -28,6 +29,8 @@ type Props = {
   priceOverrides: Record<string, number>;
   nameOverrides: Record<string, string>;
   deliveryFeeConfig: DeliveryFeeConfig | null;
+  /** Ordem do cardápio escolhida pelo dono (null = ordem de fábrica): o pedido manual mostra os itens na mesma ordem do site. */
+  menuLayout: MenuLayout | null;
 };
 
 /**
@@ -36,7 +39,7 @@ type Props = {
  * sininho, desconta o estoque, imprime (se a impressora estiver ligada) e entra no Financeiro sozinho. Funciona
  * mesmo com o site fechado, pausado ou fora do horário — quem decide aqui é a equipe.
  */
-export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig }: Props) {
+export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig, menuLayout }: Props) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [source, setSource] = useState<ManualSource>("telefone");
@@ -65,7 +68,14 @@ export default function ManualOrderPanel({ customItems, dailyCombos, soldOutIds,
   // A taxa chega do banco depois que a aba abre; enquanto a equipe não mexer no campo, ele acompanha o valor configurado.
   useEffect(() => { if (!feeTouched) setFeeDraft(toDraft(defaultFee)); }, [defaultFee, feeTouched]);
 
-  const catalog = useMemo(() => buildCatalog({ menuSections, addonSections, customItems, dailyCombos: dailyCombos ?? [], soldOutIds, hiddenIds, priceOverrides, nameOverrides, today: new Date() }), [customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides]);
+  const catalog = useMemo(() => {
+    // keepEmptySections: um item movido pra uma seção que ficou sem itens visíveis tem que cair nela (como no site); as vazias saem depois de arrumar.
+    const built = buildCatalog({ menuSections, addonSections, customItems, dailyCombos: dailyCombos ?? [], soldOutIds, hiddenIds, priceOverrides, nameOverrides, today: new Date(), keepEmptySections: true });
+    // "Promoção do dia" fica sempre no topo; as demais seções seguem a ordem que o dono escolheu no painel (mesma do site).
+    const promo = built.sections.filter((section) => section.id === "promo-do-dia");
+    const regular = built.sections.filter((section) => section.id !== "promo-do-dia");
+    return { ...built, sections: [...promo, ...arrangeSections(regular, menuLayout).filter((section) => section.items.length > 0)] };
+  }, [customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, menuLayout]);
   const lookup = useMemo(() => {
     const map = new Map<string, { name: string; price: number }>();
     catalog.sections.forEach((section) => section.items.forEach((item) => map.set(item.id, { name: item.name, price: item.price })));
