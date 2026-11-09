@@ -14,14 +14,20 @@ import { BUSINESS_DAY_END_HOUR, businessDayEnd, manualOpenExpiry, sameLocalDay, 
 export type SiteWrites = { manualClose: boolean; manualOpen: boolean };
 
 /**
- * Botão principal. Site aberto agora -> fecha (liga o fechamento, desliga a abertura manual).
+ * Botão principal. Site aberto agora -> fecha. Se está aberto SÓ porque o admin apertou "Abrir agora" (fora do horário
+ * normal), fechar é desfazer essa abertura e o site volta ao horário normal — NÃO liga o fechamento do dia, senão "Abrir"
+ * e "Fechar" logo depois (um teste de manhã, por exemplo) deixavam o site fechado até na hora de abrir à noite.
+ * Aberto pelo horário normal -> liga o fechamento (e desliga a abertura manual).
  * Site fechado agora -> abre: dentro do horário só tira o fechamento (volta ao horário normal);
  * fora do horário liga a abertura manual (vale até as 2h da manhã, ver manualOpenRule.ts).
  */
 export function planSitePress(now: Date, manualOpenInfo: ManualOpenInfo, manualCloseInfo: ManualCloseInfo): SiteWrites {
   const scheduleOpen = isStoreOpen(now);
   const open = computeStoreOpen(scheduleOpen, manualOpenInfo, manualCloseInfo, now);
-  if (open) return { manualClose: true, manualOpen: false };
+  if (open) {
+    const openedByHandOnly = !scheduleOpen && isManualOpenEffective(manualOpenInfo, now);
+    return openedByHandOnly ? { manualClose: false, manualOpen: false } : { manualClose: true, manualOpen: false };
+  }
   return { manualClose: false, manualOpen: !scheduleOpen };
 }
 
@@ -89,15 +95,23 @@ export function describeSite(now: Date, manualOpenInfo: ManualOpenInfo, manualCl
     const detail = manualOpened
       ? `Aberto por você${sinceLabel(manualOpenInfo.openedAt, now)}. Fecha sozinho ${expiryLabel(manualOpenInfo.openedAt ?? now)}.`
       : `Horário normal. Fecha sozinho às ${closeHour}h.`;
+    // Aberto só porque o admin apertou "Abrir agora" fora do horário: "Fechar" só desfaz isso e o site volta ao horário normal.
+    const resume = nextScheduleOpen(now);
+    const resumeText = `${dayWord(resume, now)} às ${openLabel(resume)}`;
+    const closeByHand = manualOpened && !scheduleOpen
+      ? {
+          hint: `Se apertar, o site FECHA agora e volta ao horário normal (${resumeText}).`,
+          confirmText: `Fechar o site agora? O que você abriu antes é cancelado e o site volta ao horário normal (${resumeText}). Dá pra abrir de novo a qualquer hora.`,
+        }
+      : {
+          hint: `Se apertar, o site FECHA agora pra todos os clientes e só volta ${dayWord(tomorrowOpen, now)} às ${openLabel(tomorrowOpen)}.`,
+          confirmText: "Fechar o site AGORA? Os clientes não conseguem mais pedir até o horário normal de amanhã. Dá pra abrir de novo a qualquer hora.",
+        };
     return {
       open: true,
       headline: "🟢 SITE ABERTO · recebendo pedidos",
       detail,
-      primary: {
-        label: "🔒 Fechar o site agora",
-        hint: `Se apertar, o site FECHA agora pra todos os clientes e só volta ${dayWord(tomorrowOpen, now)} às ${openLabel(tomorrowOpen)}.`,
-        confirmText: "Fechar o site AGORA? Os clientes não conseguem mais pedir até o horário normal de amanhã. Dá pra abrir de novo a qualquer hora.",
-      },
+      primary: { label: "🔒 Fechar o site agora", ...closeByHand },
       // Botão pequeno do cabeçalho (ao lado do Pausar pedidos): sempre à mão durante o dia. Com o site aberto ele fecha agora e o resto do dia.
       secondary: {
         kind: "skip",
