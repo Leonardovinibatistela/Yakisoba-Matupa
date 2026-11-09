@@ -13,6 +13,8 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
 import { arrangeSections, compatibleSectionIds, moveItemInSection, moveItemToSection, moveSection, snapshotLayout, type MenuLayout } from "../menuLayout";
 import { resetMenuLayout, saveMenuLayout, subscribeMenuLayout } from "../menuLayoutStore";
+import { MAX_CUSTOM_SECTIONS, addSection, newSectionId, normalizeSectionName, removeSection, renameSection, sectionDeleteBlocker, toMenuSection, validateSectionName, type CustomSection } from "../customSections";
+import { saveCustomSections, subscribeCustomSections } from "../customSectionsStore";
 import { YAKI_SECTION_IDS } from "./manualOrderLogic";
 import { setEmergencyPause, subscribeEmergencyPauseInfo } from "../emergencyPause";
 import { setManualOpen, subscribeManualOpen } from "../manualOpen";
@@ -339,6 +341,17 @@ function Dashboard({ user }: { user: User }) {
   const [organizing, setOrganizing] = useState(false);
   const [layoutError, setLayoutError] = useState("");
   const [layoutSaving, setLayoutSaving] = useState(false);
+  // Seções novas que o dono cria (ver customSections.ts): criar, renomear e excluir (só vazia).
+  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
+  // Só libera "Criar seção" depois que a lista salva chegou: criar antes disso gravaria uma lista incompleta por cima das seções que já existem.
+  const [customSectionsLoaded, setCustomSectionsLoaded] = useState(false);
+  useEffect(() => subscribeCustomSections((list) => { setCustomSections(list); setCustomSectionsLoaded(true); }), []);
+  const [sectionFormOpen, setSectionFormOpen] = useState(false);
+  const [sectionName, setSectionName] = useState("");
+  const [sectionBusy, setSectionBusy] = useState(false);
+  const [sectionMsg, setSectionMsg] = useState("");
+  const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   // Status + botões do site (ver siteControl.ts): botão principal (abrir/fechar AGORA) e o botão "Hoje não vamos abrir".
   // Atualiza junto com o relógio (clockTick), então o texto e os botões mudam sozinhos na hora de abrir/fechar.
   const [togglingSite, setTogglingSite] = useState(false);
@@ -524,9 +537,11 @@ function Dashboard({ user }: { user: User }) {
     const price = Number(newItemPrice.replace(",", "."));
     if (!name) { window.alert("Digite o nome do item."); return; }
     if (!Number.isFinite(price) || price < 0) { window.alert("Digite um preço válido."); return; }
+    // A seção escolhida pode ter sido excluída em outro aparelho: nesse caso o item vai pra primeira seção (nunca fica sem seção, invisível).
+    const sectionId = [...menuSections, ...customSections].some((section) => section.id === newItemSectionId) ? newItemSectionId : menuSections[0].id;
     setAddingItem(true);
     const create = (image?: string) =>
-      addCustomItem({ sectionId: newItemSectionId, name, description: newItemDescription.trim() || undefined, price, image })
+      addCustomItem({ sectionId, name, description: newItemDescription.trim() || undefined, price, image })
         .then(resetNewItemForm)
         .catch(() => window.alert("Não foi possível adicionar o item. Tenta de novo."))
         .finally(() => setAddingItem(false));
@@ -701,7 +716,7 @@ function Dashboard({ user }: { user: User }) {
 
   if (error) return <div className="grid min-h-screen place-items-center bg-[#100d0c] px-5 text-center text-white/70">{error}</div>;
 
-  const manualOrderProps = manualOrderAllowed ? { customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig, menuLayout } : null;
+  const manualOrderProps = manualOrderAllowed ? { customItems, dailyCombos, soldOutIds, hiddenIds, priceOverrides, nameOverrides, deliveryFeeConfig, menuLayout, customSections } : null;
 
   const handleForgotKitchenPin = () => {
     resetKitchenLock();
@@ -738,7 +753,9 @@ function Dashboard({ user }: { user: User }) {
   }
 
   // Cardápio do painel já na ordem escolhida (itens de fábrica + os que o admin adicionou, mesmo os excluídos do site).
-  const arrangedMenuSections = arrangeSections(menuSections.map((section) => ({ ...section, items: [...section.items, ...customItems.filter((item) => item.sectionId === section.id)] })), menuLayout);
+  const allMenuSections = [...menuSections, ...customSections.map(toMenuSection)];
+  const newItemSectionShown = allMenuSections.some((section) => section.id === newItemSectionId) ? newItemSectionId : menuSections[0].id;
+  const arrangedMenuSections = arrangeSections(allMenuSections.map((section) => ({ ...section, items: [...section.items, ...customItems.filter((item) => item.sectionId === section.id)] })), menuLayout);
   const currentLayout = snapshotLayout(arrangedMenuSections);
   const applyLayout = (next: MenuLayout) => {
     if (next === currentLayout) return;
@@ -755,13 +772,57 @@ function Dashboard({ user }: { user: User }) {
     setLayoutSaving(true);
     resetMenuLayout().catch(() => setLayoutError("Não consegui voltar a ordem. Confira a internet e tente de novo.")).finally(() => setLayoutSaving(false));
   };
+  // Seções novas: o nome não pode repetir o de nenhuma outra (de fábrica ou criada pelo dono).
+  const otherSectionNames = (exceptId?: string) => allMenuSections.filter((section) => section.id !== exceptId).flatMap((section) => [section.eyebrow, section.title]);
+  const persistSections = async (next: CustomSection[], okMessage: string): Promise<boolean> => {
+    setSectionBusy(true);
+    setSectionMsg("");
+    try {
+      await saveCustomSections(next);
+      setSectionMsg(okMessage);
+      return true;
+    } catch {
+      setSectionMsg("Não consegui salvar. Confira a internet e tente de novo.");
+      return false;
+    } finally {
+      setSectionBusy(false);
+    }
+  };
+  const handleCreateSection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!customSectionsLoaded) { setSectionMsg("Espera um instante: ainda estou carregando as seções que já existem."); return; }
+    const name = normalizeSectionName(sectionName);
+    const problem = validateSectionName(name, otherSectionNames());
+    if (problem) { setSectionMsg(problem); return; }
+    if (customSections.length >= MAX_CUSTOM_SECTIONS) { setSectionMsg(`Dá pra criar até ${MAX_CUSTOM_SECTIONS} seções novas.`); return; }
+    const id = newSectionId(name, allMenuSections.map((section) => section.id));
+    if (await persistSections(addSection(customSections, { id, name }), `✓ Seção "${name}" criada. Ela só aparece no site depois que tiver um item: adicione um item nela no formulário "Adicionar item", ou use ↕ Organizar pra mover itens pra cá.`)) {
+      setSectionName("");
+      setSectionFormOpen(false);
+      setNewItemSectionId(id);
+    }
+  };
+  const handleRenameSection = async (id: string) => {
+    const name = normalizeSectionName(renameDraft);
+    const problem = validateSectionName(name, otherSectionNames(id));
+    if (problem) { setSectionMsg(problem); return; }
+    if (await persistSections(renameSection(customSections, id, name), `✓ Seção renomeada pra "${name}".`)) setRenamingSectionId(null);
+  };
+  const handleDeleteSection = async (id: string) => {
+    const section = arrangedMenuSections.find((candidate) => candidate.id === id);
+    if (!section) return;
+    const blocker = sectionDeleteBlocker(section.items.length, customItems.filter((item) => item.sectionId === id).length);
+    if (blocker) { setSectionMsg(blocker); return; }
+    if (!window.confirm(`Excluir a seção "${section.eyebrow}"? Ela está vazia, então nenhum item some.`)) return;
+    if ((await persistSections(removeSection(customSections, id), `✓ Seção "${section.eyebrow}" excluída.`)) && newItemSectionId === id) setNewItemSectionId(menuSections[0].id);
+  };
 
   const now = new Date();
   const todayOrders = orders ? ordersInRange(orders, startOfDay(now)) : [];
   const weekOrders = orders ? ordersInRange(orders, startOfWeek(now)) : [];
   const monthOrders = orders ? ordersInRange(orders, startOfMonth(now)) : [];
   const itemCatalog = [
-    ...menuSections.flatMap((section) => [...section.items, ...customItems.filter((item) => item.sectionId === section.id)]).map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price, hidden: hiddenIds.has(item.id) })),
+    ...[...menuSections.flatMap((section) => section.items), ...customItems].map((item) => ({ id: item.id, name: nameOverrides[item.id] ?? item.name, price: priceOverrides[item.id] ?? item.price, hidden: hiddenIds.has(item.id) })),
     ...addonSections.flatMap((section) => section.items).map((item) => ({ id: item.id, name: item.name, price: item.price })),
     ...(dailyCombos ?? []).map((combo) => ({ id: combo.id, name: combo.name, price: combo.price })),
   ];
@@ -1092,8 +1153,18 @@ function Dashboard({ user }: { user: User }) {
           <div className="mt-5 space-y-6">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setOrganizing((value) => !value)} aria-pressed={organizing} className={`min-h-[44px] rounded-full border px-4 text-xs font-bold transition ${organizing ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>{organizing ? "✓ Terminei de organizar" : "↕ Organizar o cardápio"}</button>
+              <button type="button" onClick={() => { setSectionFormOpen((value) => !value); setSectionMsg(""); }} aria-expanded={sectionFormOpen} className={`min-h-[44px] rounded-full border px-4 text-xs font-bold transition ${sectionFormOpen ? "border-[#ff5a19] text-[#ff875c]" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>＋ Nova seção</button>
               {organizing && <button type="button" onClick={handleResetLayout} disabled={menuLayout === null || layoutSaving} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Voltar à ordem de fábrica</button>}
               {organizing && <p className="basis-full text-xs leading-relaxed text-white/50">Use ▲ ▼ pra subir e descer os itens e as seções. Em "Mover para" você troca o item de seção (yakisoba só vai pra outra seção de yakisoba). Cada toque já vale no site na hora, pra todos os clientes.</p>}
+              {sectionFormOpen && (
+                <form onSubmit={handleCreateSection} className="flex basis-full flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] p-3">
+                  <label htmlFor="new-section-name" className="text-xs font-bold text-white/70">Nome da nova seção</label>
+                  <input id="new-section-name" type="text" autoFocus value={sectionName} maxLength={40} onChange={(event) => setSectionName(event.target.value)} placeholder="Ex.: Temakis, Sobremesas" className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                  <button type="submit" disabled={sectionBusy || !customSectionsLoaded} className="min-h-[44px] rounded-full bg-[#ff5a19] px-5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:opacity-50">{sectionBusy ? "Criando…" : "Criar seção"}</button>
+                  <button type="button" onClick={() => { setSectionFormOpen(false); setSectionName(""); setSectionMsg(""); }} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Cancelar</button>
+                </form>
+              )}
+              {sectionMsg && <p role="status" className="basis-full rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-white/80">{sectionMsg}</p>}
               {layoutError && <p role="alert" className="basis-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200">{layoutError}</p>}
             </div>
             {arrangedMenuSections.map((section, sectionIndex) => {
@@ -1113,12 +1184,25 @@ function Dashboard({ user }: { user: User }) {
                         <button type="button" onClick={() => handleMoveSection(section.id, 1)} disabled={sectionIndex === arrangedMenuSections.length - 1} aria-label={`Descer a seção ${section.eyebrow}`} className="grid h-9 w-9 place-items-center rounded-full border border-white/20 text-xs font-bold text-white/80 transition hover:border-white/50 disabled:cursor-not-allowed disabled:opacity-30">▼</button>
                       </>
                     )}
+                    {organizing && customSections.some((custom) => custom.id === section.id) && (renamingSectionId === section.id ? (
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <input type="text" autoFocus value={renameDraft} maxLength={40} onChange={(event) => setRenameDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") handleRenameSection(section.id); if (event.key === "Escape") setRenamingSectionId(null); }} aria-label={`Novo nome da seção ${section.eyebrow}`} className="min-h-[36px] w-40 rounded-lg border border-white/15 bg-white/[0.06] px-2 text-xs text-white outline-none focus:border-[#ff6b32]" />
+                        <button type="button" onClick={() => handleRenameSection(section.id)} disabled={sectionBusy} className="min-h-[36px] rounded-full bg-[#ff5a19] px-3 text-[11px] font-bold text-white disabled:opacity-50">Salvar</button>
+                        <button type="button" onClick={() => setRenamingSectionId(null)} className="min-h-[36px] px-2 text-[11px] font-bold text-white/50 hover:text-white">Cancelar</button>
+                      </span>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => { setRenamingSectionId(section.id); setRenameDraft(section.eyebrow); setSectionMsg(""); }} className="text-[10px] font-bold text-[#ff875c] underline decoration-dotted underline-offset-2 hover:text-white">✎ Renomear</button>
+                        <button type="button" onClick={() => handleDeleteSection(section.id)} disabled={sectionBusy || addingItem} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">🗑 Excluir seção</button>
+                      </>
+                    ))}
                   </div>
-                  <button type="button" onClick={() => handleToggleSection(section.id, sectionItemIds, !allSoldOut)} disabled={isTogglingSection} className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${allSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>
+                  {sectionItems.length > 0 && <button type="button" onClick={() => handleToggleSection(section.id, sectionItemIds, !allSoldOut)} disabled={isTogglingSection} className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition disabled:cursor-wait disabled:opacity-50 ${allSoldOut ? "border-red-400/40 bg-red-400/10 text-red-300 hover:border-red-400/70" : "border-white/15 text-white/50 hover:border-white/35 hover:text-white"}`}>
                     {isTogglingSection ? "…" : allSoldOut ? "Reativar todos" : "Marcar todos esgotados"}
-                  </button>
+                  </button>}
                 </div>
                 <div className="mt-2 divide-y divide-white/10 rounded-xl border border-white/10">
+                  {sectionItems.length === 0 && <p className="px-4 py-4 text-xs leading-relaxed text-white/45">Nenhum item nesta seção ainda. Adicione um item nela no formulário "Adicionar item" ou use ↕ Organizar pra mover itens pra cá. Enquanto estiver vazia, ela não aparece no site.</p>}
                   {sectionItems.map((item, itemIndex) => {
                     const isCustom = customItems.some((custom) => custom.id === item.id);
                     const isSoldOut = soldOutIds.has(item.id);
@@ -1255,8 +1339,8 @@ function Dashboard({ user }: { user: User }) {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="min-w-0">
                   <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Seção</label>
-                  <select value={newItemSectionId} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
-                    {menuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
+                  <select value={newItemSectionShown} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
+                    {allMenuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
                   </select>
                 </div>
                 <div className="min-w-0">
