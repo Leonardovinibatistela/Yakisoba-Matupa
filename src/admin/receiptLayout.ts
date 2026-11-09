@@ -3,14 +3,15 @@
 // NOME / FONE / END., itens em fundo preto (QTD, produto, valor), PRODUTOS / ENTREGA / TOTAL e o pagamento.
 // O printer.ts transforma estas linhas em comandos ESC/POS.
 import type { OrderRecord } from "./adminData";
+import { ESTIMATED_MINUTES } from "../estimatedTime";
 
 /** Colunas de texto numa impressora térmica de 58mm, fonte padrão (letra maior ocupa mais colunas por caractere). */
 export const LINE_WIDTH = 32;
 export const STORE_NAME = "SOOBA YAKISOBA E SUSHI";
 export const STORE_PHONE = "(66) 99202-6783";
 export const STORE_CNPJ = "62.321.249/0001-56";
-/** Minutos entre a hora do pedido e o "PREVISTO PARA" impresso. */
-export const ESTIMATED_MINUTES = { entrega: 45, retirada: 45 } as const;
+/** Minutos entre a hora do pedido e o "PREVISTO PARA" impresso (o mesmo número do aviso no site; fica em estimatedTime.ts). */
+export { ESTIMATED_MINUTES };
 /** Horário de Matupá (UTC-4, sem horário de verão): o recibo sai sempre nele, não no fuso do computador que imprime. */
 const STORE_OFFSET_MINUTES = 240;
 
