@@ -463,6 +463,8 @@ function Dashboard({ user }: { user: User }) {
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [photoDraftFile, setPhotoDraftFile] = useState<File | null>(null);
   const [photoDraftPreview, setPhotoDraftPreview] = useState<string | null>(null);
+  // "Remover foto": o item fica sem foto nenhuma (grava a foto como vazia). "Restaurar padrão" devolve a foto original.
+  const [photoRemoveDraft, setPhotoRemoveDraft] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const startEditItem = (itemId: string, currentName: string, currentPrice: number, currentDescription: string) => {
     setEditingItemId(itemId);
@@ -471,6 +473,7 @@ function Dashboard({ user }: { user: User }) {
     setDescriptionDraft(currentDescription);
     setPhotoDraftFile(null);
     setPhotoDraftPreview(null);
+    setPhotoRemoveDraft(false);
   };
   const handlePickPhotoDraft = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -478,6 +481,7 @@ function Dashboard({ user }: { user: User }) {
     if (!file) return;
     setPhotoDraftFile(file);
     setPhotoDraftPreview(URL.createObjectURL(file));
+    setPhotoRemoveDraft(false);
   };
   const handleSaveItem = async (itemId: string) => {
     const trimmedName = nameDraft.trim();
@@ -489,6 +493,8 @@ function Dashboard({ user }: { user: User }) {
       if (photoDraftFile) {
         const { url } = await uploadImageToCloudinary(photoDraftFile);
         await setItemPhoto(itemId, url);
+      } else if (photoRemoveDraft) {
+        await setItemPhoto(itemId, "");
       }
       await Promise.all([
         setItemName(itemId, trimmedName),
@@ -1273,11 +1279,18 @@ function Dashboard({ user }: { user: User }) {
                       return (
                         <div key={item.id} className="px-4 py-4">
                           <div className="flex items-start gap-3">
-                            <label className="relative grid h-16 w-16 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60">
-                              {(photoDraftPreview ?? currentPhoto) ? <img src={photoDraftPreview ?? currentPhoto} alt={currentName} className="h-full w-full object-cover" /> : "Sem foto"}
+                            <div className="flex w-16 shrink-0 flex-col items-center gap-1.5">
+                            <label className="relative grid h-16 w-16 cursor-pointer place-items-center overflow-hidden rounded-lg border border-white/15 bg-white/[0.04] text-[9px] font-bold text-white/40 transition hover:border-[#ff6b32]/60">
+                              {(photoRemoveDraft ? null : (photoDraftPreview ?? currentPhoto)) ? <img src={(photoDraftPreview ?? currentPhoto) as string} alt={currentName} className="h-full w-full object-cover" /> : "Sem foto"}
                               <span className="absolute inset-0 grid place-items-center bg-black/0 text-transparent transition hover:bg-black/50 hover:text-white">Trocar</span>
                               <input type="file" accept="image/*" onChange={handlePickPhotoDraft} className="hidden" />
                             </label>
+                            {photoRemoveDraft ? (
+                              <button type="button" onClick={() => setPhotoRemoveDraft(false)} className="text-center text-[10px] font-bold leading-tight text-white/60 underline decoration-dotted underline-offset-2 hover:text-white">↩ Desfazer</button>
+                            ) : (photoDraftPreview ?? currentPhoto) ? (
+                              <button type="button" onClick={() => { setPhotoRemoveDraft(true); setPhotoDraftFile(null); setPhotoDraftPreview(null); }} className="text-center text-[10px] font-bold leading-tight text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300">🗑 Remover foto</button>
+                            ) : null}
+                          </div>
                             <div className="min-w-0 flex-1 space-y-2">
                               <input type="text" autoFocus value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} placeholder="Nome" className="w-full rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-sm font-bold text-white outline-none focus:border-[#ff6b32]" />
                               <textarea value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} placeholder="Descrição (opcional)" rows={2} className="w-full resize-none rounded-lg border border-white/15 bg-white/[0.06] px-2.5 py-1.5 text-xs text-white/80 outline-none focus:border-[#ff6b32]" />
