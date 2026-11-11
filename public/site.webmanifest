@@ -1,0 +1,13 @@
+{
+  "name": "Sooba Yakisoba e Sushi",
+  "short_name": "Sooba",
+  "description": "Yakisoba e sushi delivery em Matupá e Peixoto de Azevedo.",
+  "start_url": "./",
+  "display": "browser",
+  "background_color": "#100d0c",
+  "theme_color": "#100d0c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

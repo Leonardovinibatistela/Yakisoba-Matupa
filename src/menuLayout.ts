@@ -2,12 +2,19 @@
 // O cardápio "de fábrica" (menuData.ts) tem uma ordem; aqui fica o que o admin mudou: a ordem das seções, a ordem dos itens
 // dentro de cada seção e itens movidos pra outra seção. Sem nada salvo, o site segue a ordem de fábrica.
 
+import { CUSTOM_SECTION_PREFIX } from "./customSections";
+
 /** `sectionOrder`: ids das seções na ordem. `items`: por seção, os ids dos itens na ordem (um item que aparece na lista de OUTRA seção foi movido pra lá). */
 export type MenuLayout = { sectionOrder: string[]; items: Record<string, string[]> };
 
 type Section<T extends { id: string }> = { id: string; items: T[] };
 
-/** Seções na ordem escolhida; as que não estão na lista (seção nova) vão pro fim, na ordem de fábrica. */
+/**
+ * Seções na ordem escolhida. As que o dono ainda não arrumou (não estão na lista salva):
+ * - seção de fábrica nova (veio numa atualização do site): entra logo depois da seção que vem antes dela na ordem de fábrica
+ *   (ou no começo, se for a primeira) — assim uma atualização não joga as seções novas pro fim, depois das bebidas;
+ * - seção criada pelo dono (id "sec-…"): vai pro fim, na ordem em que foi criada.
+ */
 export function orderSections<S extends { id: string }>(sections: S[], layout: MenuLayout | null): S[] {
   if (!layout) return sections;
   const byId = new Map(sections.map((section) => [section.id, section]));
@@ -17,7 +24,15 @@ export function orderSections<S extends { id: string }>(sections: S[], layout: M
     const section = byId.get(id);
     if (section && !used.has(id)) { ordered.push(section); used.add(id); }
   }
-  for (const section of sections) if (!used.has(section.id)) ordered.push(section);
+  sections.forEach((section, index) => {
+    if (used.has(section.id)) return;
+    used.add(section.id);
+    if (section.id.startsWith(CUSTOM_SECTION_PREFIX)) { ordered.push(section); return; }
+    // as seções de antes já estão em `ordered` (as salvas, ou as novas que entraram na vez delas)
+    let anchor = -1;
+    for (let before = index - 1; before >= 0 && anchor === -1; before--) anchor = ordered.findIndex((placed) => placed.id === sections[before].id);
+    ordered.splice(anchor + 1, 0, section);
+  });
   return ordered;
 }
 
