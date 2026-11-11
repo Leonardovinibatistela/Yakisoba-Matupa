@@ -1188,9 +1188,21 @@ function Dashboard({ user }: { user: User }) {
                 <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Descrição (opcional)</label>
                 <input type="text" value={newItemDescription} onChange={(event) => setNewItemDescription(event.target.value)} placeholder="Ex: Camarão, legumes e macarrão" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
               </div>
-              <button type="button" onClick={handleAddItem} disabled={addingItem} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
-                {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
-              </button>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <button type="button" onClick={handleAddItem} disabled={addingItem} className="w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto">
+                  {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
+                </button>
+                <button type="button" onClick={() => { setSectionFormOpen((value) => !value); setSectionMsg(""); }} aria-expanded={sectionFormOpen} className={`rounded-full border px-4 py-2.5 text-xs font-bold transition ${sectionFormOpen ? "border-[#ff5a19] text-[#ff875c]" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>＋ Nova seção</button>
+              </div>
+              {sectionFormOpen && (
+                <form onSubmit={handleCreateSection} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] p-3">
+                  <label htmlFor="new-section-name" className="text-xs font-bold text-white/70">Nome da nova seção</label>
+                  <input id="new-section-name" type="text" autoFocus value={sectionName} maxLength={40} onChange={(event) => setSectionName(event.target.value)} placeholder="Ex.: Temakis, Sobremesas" className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                  <button type="submit" disabled={sectionBusy || !customSectionsLoaded} className="min-h-[44px] rounded-full bg-[#ff5a19] px-5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:opacity-50">{sectionBusy ? "Criando…" : "Criar seção"}</button>
+                  <button type="button" onClick={() => { setSectionFormOpen(false); setSectionName(""); setSectionMsg(""); }} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Cancelar</button>
+                </form>
+              )}
+              {sectionMsg && <p role="status" className="rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-white/80">{sectionMsg}</p>}
             </div>
           </div>
         </div>
@@ -1202,18 +1214,8 @@ function Dashboard({ user }: { user: User }) {
           <div className="mt-5 space-y-6">
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setOrganizing((value) => !value)} aria-pressed={organizing} className={`min-h-[44px] rounded-full border px-4 text-xs font-bold transition ${organizing ? "border-[#ff5a19] bg-[#ff5a19] text-white" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>{organizing ? "✓ Terminei de organizar" : "↕ Organizar o cardápio"}</button>
-              <button type="button" onClick={() => { setSectionFormOpen((value) => !value); setSectionMsg(""); }} aria-expanded={sectionFormOpen} className={`min-h-[44px] rounded-full border px-4 text-xs font-bold transition ${sectionFormOpen ? "border-[#ff5a19] text-[#ff875c]" : "border-white/20 text-white/80 hover:border-white/40 hover:text-white"}`}>＋ Nova seção</button>
               {organizing && <button type="button" onClick={handleResetLayout} disabled={menuLayout === null || layoutSaving} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/60 transition hover:border-white/35 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">Voltar à ordem de fábrica</button>}
               {organizing && <p className="basis-full text-xs leading-relaxed text-white/50">Use ▲ ▼ pra subir e descer os itens e as seções. Em "Mover para" você troca o item de seção (yakisoba só vai pra outra seção de yakisoba). Cada toque já vale no site na hora, pra todos os clientes.</p>}
-              {sectionFormOpen && (
-                <form onSubmit={handleCreateSection} className="flex basis-full flex-wrap items-center gap-2 rounded-xl border border-white/15 bg-white/[0.03] p-3">
-                  <label htmlFor="new-section-name" className="text-xs font-bold text-white/70">Nome da nova seção</label>
-                  <input id="new-section-name" type="text" autoFocus value={sectionName} maxLength={40} onChange={(event) => setSectionName(event.target.value)} placeholder="Ex.: Temakis, Sobremesas" className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-white/15 bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
-                  <button type="submit" disabled={sectionBusy || !customSectionsLoaded} className="min-h-[44px] rounded-full bg-[#ff5a19] px-5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:opacity-50">{sectionBusy ? "Criando…" : "Criar seção"}</button>
-                  <button type="button" onClick={() => { setSectionFormOpen(false); setSectionName(""); setSectionMsg(""); }} className="min-h-[44px] rounded-full border border-white/15 px-4 text-xs font-bold text-white/70 transition hover:border-white/35 hover:text-white">Cancelar</button>
-                </form>
-              )}
-              {sectionMsg && <p role="status" className="basis-full rounded-xl border border-white/15 bg-white/[0.04] px-4 py-2.5 text-sm font-bold text-white/80">{sectionMsg}</p>}
               {layoutError && <p role="alert" className="basis-full rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-2.5 text-sm font-bold text-red-200">{layoutError}</p>}
             </div>
             {arrangedMenuSections.map((section, sectionIndex) => {
