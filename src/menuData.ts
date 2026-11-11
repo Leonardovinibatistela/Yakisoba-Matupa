@@ -39,13 +39,8 @@ export const menuSections: MenuSection[] = [
     { id: "sashimi-shakeramura", name: "Sashimi Shakeramura - 6 Fatias", description: "Fatias de salmão, finalizado com geleia de maracujá, tarê e crispe de batata doce.", price: 42, priceLabel: "R$42,00", addedAt: NEW },
   ] },
   { id: "uramakis", eyebrow: "Uramakis", title: "Uramakis", items: [
-    { id: "uramaki-fila-sooba", name: "Uramaki Fila Sooba - 8 unidades", description: "Salmão, cream cheese, tira de salmão maçaricado, finalizado com tarê e raspas de limão siciliano.", price: 50, priceLabel: "R$50,00", addedAt: NEW },
-    { id: "uramaki-salmao-crispe", name: "Uramaki Salmão Crispe - 8 unidades", description: "Salmão empanado, cream cheese, finalizado com geleia de pimenta, tarê e crispe de batata doce.", price: 45, priceLabel: "R$45,00", addedAt: NEW },
-    { id: "uramaki-salmao-ebi", name: "Uramaki Salmão Ebi - 8 unidades", description: "Salmão, camarão empanado, cream cheese, tira de salmão, finalizado com mel e lâminas de amêndoas.", price: 55, priceLabel: "R$55,00", addedAt: NEW },
-    { id: "uramaki-fila-sooba-especial", name: "Uramaki Fila Sooba Especial - 8 Unidades", description: "Salmão, cream cheese, tira de salmão maçaricado, finalizado com tarê, raspas de limão siciliano, azeite trufado, ovas e flor de sal.", price: 55, priceLabel: "R$55,00", addedAt: NEW },
     { id: "uramaki-ebitai", name: "Uramaki Ebitai - 8 Unidades", description: "Camarão empanado, cream cheese, tira de salmão, finalizado com geleia de maracujá, tarê e crispe de alho poró.", price: 55, priceLabel: "R$55,00", addedAt: NEW },
     { id: "uramaki-filadelfia-8", name: "Uramaki Filadélfia - 8 Unidades", description: "Salmão e cream cheese.", price: 40, priceLabel: "R$40,00", addedAt: NEW },
-    { id: "uramaki-nachos", name: "Uramaki Nachos - 8 Unidades", description: "Salmão, cream cheese, finalizado com geleia de pimenta e Doritos.", price: 45, priceLabel: "R$45,00", addedAt: NEW },
     { id: "uramaki-ebiten", name: "Uramaki Ebiten - 8 Unidades", description: "Camarão empanado, cream cheese, finalizado com tarê e cebolinha.", price: 45, priceLabel: "R$45,00", addedAt: NEW },
   ] },
   { id: "hots", eyebrow: "Hots", title: "Hots", items: [

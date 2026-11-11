@@ -10,7 +10,7 @@ import { clearItemPhoto, setItemPhoto, subscribePhotoOverrides } from "../photoO
 import { clearItemName, setItemName, subscribeNameOverrides } from "../nameOverrides";
 import { clearItemDescription, setItemDescription, subscribeDescriptionOverrides } from "../descriptionOverrides";
 import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuItem } from "../customItems";
-import { setItemHidden, subscribeHiddenItems } from "../hiddenItems";
+import { deleteItemForever, setItemHidden, subscribeDeletedItems, subscribeHiddenItems } from "../hiddenItems";
 import { arrangeSections, compatibleSectionIds, moveItemInSection, moveItemToSection, moveSection, snapshotLayout, type MenuLayout } from "../menuLayout";
 import { resetMenuLayout, saveMenuLayout, subscribeMenuLayout } from "../menuLayoutStore";
 import { MAX_CUSTOM_SECTIONS, addSection, newSectionId, normalizeSectionName, removeSection, renameSection, sectionDeleteBlocker, toMenuSection, validateSectionName, type CustomSection } from "../customSections";
@@ -67,6 +67,9 @@ const MANUAL_ORDER_TAB_FOR_STAFF = true;
 // A aba "Cozinha" (pra quem ajuda a cozinhar: só o que preparar, sem nenhum valor, e dá pra travar o aparelho nela) está
 // liberada pra equipe da loja (true), autorizado pelo dono. Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
 const KITCHEN_TAB_FOR_STAFF = true;
+// O botão "❌ Deletar de vez" (embaixo de "Restaurar no site", em item já excluído do site) apaga o item também da lista do painel e não tem
+// desfazer. Por enquanto só aparece pra quem cuida do sistema; só libere pra equipe da loja (true) depois do OK do desenvolvedor.
+const ITEM_DELETE_FOR_STAFF = false;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
@@ -156,6 +159,7 @@ function LoginScreen() {
 function Dashboard({ user }: { user: User }) {
   const isDeveloper = DEVELOPER_TAB_EMAILS.includes((user.email ?? "").toLowerCase());
   const kitchenAllowed = isDeveloper || KITCHEN_TAB_FOR_STAFF;
+  const itemDeleteAllowed = isDeveloper || ITEM_DELETE_FOR_STAFF;
   const manualOrderAllowed = isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF;
   // Aparelho travado na Cozinha: só aquela tela aparece (sem faturamento, financeiro, estoque…) até digitar a senha.
   const [kitchenLocked, setKitchenLocked] = useState(() => kitchenAllowed && isKitchenLocked());
@@ -417,6 +421,15 @@ function Dashboard({ user }: { user: User }) {
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [togglingHiddenId, setTogglingHiddenId] = useState<string | null>(null);
   useEffect(() => subscribeHiddenItems(setHiddenIds), []);
+  // Itens que o dono deletou de vez (botão "Deletar" embaixo de "Restaurar no site"): somem também desta lista.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  useEffect(() => subscribeDeletedItems(setDeletedIds), []);
+  const handleDeleteForever = (itemId: string, itemName: string) => {
+    if (!window.confirm(`Deletar "${itemName}" de vez? Ele some do site e também desta lista, e não dá pra restaurar por aqui.`)) return;
+    setDeletingId(itemId);
+    deleteItemForever(itemId).catch(() => window.alert("Não foi possível deletar esse item. Tenta de novo.")).finally(() => setDeletingId(null));
+  };
   const handleToggleHidden = (itemId: string, itemName: string, currentlyHidden: boolean) => {
     if (!currentlyHidden && !window.confirm(`Excluir "${itemName}" do site? Ele some do cardápio pro público, mas fica guardado aqui — dá pra restaurar quando quiser.`)) return;
     setTogglingHiddenId(itemId);
@@ -755,7 +768,7 @@ function Dashboard({ user }: { user: User }) {
   // Cardápio do painel já na ordem escolhida (itens de fábrica + os que o admin adicionou, mesmo os excluídos do site).
   const allMenuSections = [...menuSections, ...customSections.map(toMenuSection)];
   const newItemSectionShown = allMenuSections.some((section) => section.id === newItemSectionId) ? newItemSectionId : menuSections[0].id;
-  const arrangedMenuSections = arrangeSections(allMenuSections.map((section) => ({ ...section, items: [...section.items, ...customItems.filter((item) => item.sectionId === section.id)] })), menuLayout);
+  const arrangedMenuSections = arrangeSections(allMenuSections.map((section) => ({ ...section, items: [...section.items, ...customItems.filter((item) => item.sectionId === section.id)].filter((item) => !deletedIds.has(item.id)) })), menuLayout);
   const currentLayout = snapshotLayout(arrangedMenuSections);
   const applyLayout = (next: MenuLayout) => {
     if (next === currentLayout) return;
@@ -1306,7 +1319,10 @@ function Dashboard({ user }: { user: User }) {
                           {isCustom ? (
                             <button type="button" onClick={() => handleRemoveCustomItem(item as CustomMenuItem)} disabled={isRemoving} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isRemoving ? "Removendo…" : "🗑 Remover item"}</button>
                           ) : (
-                            <button type="button" onClick={() => handleToggleHidden(item.id, item.name, isHidden)} disabled={isTogglingHidden} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isTogglingHidden ? "…" : isHidden ? "↩️ Restaurar no site" : "🗑 Excluir do site"}</button>
+                            <>
+                              <button type="button" onClick={() => handleToggleHidden(item.id, item.name, isHidden)} disabled={isTogglingHidden} className="text-[10px] font-bold text-red-400/80 underline decoration-dotted underline-offset-2 hover:text-red-300 disabled:opacity-50">{isTogglingHidden ? "…" : isHidden ? "↩️ Restaurar no site" : "🗑 Excluir do site"}</button>
+                              {isHidden && itemDeleteAllowed && <button type="button" onClick={() => handleDeleteForever(item.id, currentName)} disabled={deletingId === item.id} className="text-[10px] font-bold text-red-300 underline decoration-dotted underline-offset-2 hover:text-red-200 disabled:opacity-50">{deletingId === item.id ? "Deletando…" : "❌ Deletar de vez"}</button>}
+                            </>
                           )}
                         </div>
                         {organizing && (
