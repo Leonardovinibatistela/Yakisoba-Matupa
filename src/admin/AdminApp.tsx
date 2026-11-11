@@ -1145,6 +1145,42 @@ function Dashboard({ user }: { user: User }) {
         ) : ordersLoadingNotice)}
 
         {activeTab === "cardapio" && <>
+        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
+          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>
+          <p className="mt-1.5 text-sm text-white/50">Um sabor novo de yakisoba, um combinado novo — o que for. Escolhe a seção, preenche e já aparece no site na hora.</p>
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
+            <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingItem ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+              {newItemPhotoPreview ? <img src={newItemPhotoPreview} alt="Prévia do item novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
+              <input type="file" accept="image/*" onChange={handlePickNewItemPhoto} disabled={addingItem} className="hidden" />
+            </label>
+            <div className="grid min-w-0 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Seção</label>
+                  <select value={newItemSectionShown} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
+                    {allMenuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
+                  <input type="text" inputMode="decimal" value={newItemPrice} onChange={(event) => setNewItemPrice(event.target.value)} placeholder="Ex: 36,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Nome do item</label>
+                <input type="text" value={newItemName} onChange={(event) => setNewItemName(event.target.value)} placeholder="Ex: Yakisoba de camarão 500g" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Descrição (opcional)</label>
+                <input type="text" value={newItemDescription} onChange={(event) => setNewItemDescription(event.target.value)} placeholder="Ex: Camarão, legumes e macarrão" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
+              </div>
+              <button type="button" onClick={handleAddItem} disabled={addingItem} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
+                {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
+              </button>
+            </div>
+          </div>
+        </div>
         <DeliveryFeePanel config={deliveryFeeConfig} onSave={setDeliveryFeeConfig} />
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
@@ -1323,43 +1359,6 @@ function Dashboard({ user }: { user: User }) {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
-          <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>
-          <h2 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em]">Adicionar item novo</h2>
-          <p className="mt-1.5 text-sm text-white/50">Um sabor novo de yakisoba, um combinado novo — o que for. Escolhe a seção, preenche e já aparece no site na hora.</p>
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr]">
-            <label className={`flex h-28 w-28 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-white/20 text-[11px] font-bold text-white/50 transition hover:border-[#ff5a19]/50 hover:text-white ${addingItem ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
-              {newItemPhotoPreview ? <img src={newItemPhotoPreview} alt="Prévia do item novo" className="h-full w-full object-cover" /> : <><PlusIconAdmin /> Foto (opcional)</>}
-              <input type="file" accept="image/*" onChange={handlePickNewItemPhoto} disabled={addingItem} className="hidden" />
-            </label>
-            <div className="grid min-w-0 gap-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="min-w-0">
-                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Seção</label>
-                  <select value={newItemSectionShown} onChange={(event) => setNewItemSectionId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none focus:border-[#ff6b32]">
-                    {allMenuSections.map((section) => <option key={section.id} value={section.id} className="bg-[#171211]">{section.eyebrow}</option>)}
-                  </select>
-                </div>
-                <div className="min-w-0">
-                  <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Preço (R$)</label>
-                  <input type="text" inputMode="decimal" value={newItemPrice} onChange={(event) => setNewItemPrice(event.target.value)} placeholder="Ex: 36,90" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Nome do item</label>
-                <input type="text" value={newItemName} onChange={(event) => setNewItemName(event.target.value)} placeholder="Ex: Yakisoba de camarão 500g" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Descrição (opcional)</label>
-                <input type="text" value={newItemDescription} onChange={(event) => setNewItemDescription(event.target.value)} placeholder="Ex: Camarão, legumes e macarrão" className="mt-1.5 w-full rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff6b32]" />
-              </div>
-              <button type="button" onClick={handleAddItem} disabled={addingItem} className="mt-1 w-full rounded-full bg-[#ff5a19] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#ff6a2e] disabled:cursor-wait disabled:opacity-50 sm:w-auto sm:justify-self-start">
-                {addingItem ? "Adicionando…" : "+ Adicionar ao cardápio"}
-              </button>
-            </div>
           </div>
         </div>
         </>}
