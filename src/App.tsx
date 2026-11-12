@@ -20,6 +20,7 @@ import { ESTIMATED_MINUTES, estimatedTimeLine, estimatedTimeNotice } from "./est
 import { arrangeSections, orderSections, type MenuLayout } from "./menuLayout";
 import SectionNav from "./SectionNav";
 import { chipLabel } from "./sectionNavLogic";
+import { buildAddToCart, msSinceLoad, track, trackOnce } from "./analytics";
 import { subscribeMenuLayout } from "./menuLayoutStore";
 import { toMenuSection, type CustomSection } from "./customSections";
 import { subscribeCustomSections } from "./customSectionsStore";
@@ -223,6 +224,8 @@ function QuantityControl({ quantity, onChange, label, dark = false }: { quantity
 
 export default function App() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const quantitiesRef = useRef(quantities); // pra medir só o que foi ADICIONADO (soma), sem depender do render
+  quantitiesRef.current = quantities;
   // null = o cliente ainda não clicou em nenhum botão de seção: destaca a PRIMEIRA da ordem atual (que o dono pode ter mudado).
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
@@ -351,8 +354,29 @@ export default function App() {
   const deliveryReady = distanceConfig === null || quotedFee !== null;
   const deliveryFee = deliveryType === "entrega" ? (distanceConfig === null ? flatFee : quotedFee ?? 0) : 0;
   const total = subtotal + deliveryFee;
+  // Medição (analytics.ts): viu o cardápio, abriu o carrinho, começou a preencher.
+  useEffect(() => {
+    const heading = document.getElementById("menu-title");
+    if (!heading || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) { trackOnce("view_menu", "view_menu", { ms_since_load: msSinceLoad() }); observer.disconnect(); }
+    }, { threshold: 0.5 });
+    observer.observe(heading);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => { if (cartOpen && cartItems.length > 0) track("view_cart", { currency: "BRL", value: total, items_count: cartItems.length }); }, [cartOpen]);
+  useEffect(() => { if (cartItems.length > 0 && (customerName.trim() || customerPhone.trim())) trackOnce("begin_checkout", "begin_checkout", { currency: "BRL", value: total, items_count: cartItems.length }); }, [customerName, customerPhone]);
   const deliveryQuote: DeliveryQuote = { config: distanceConfig, flatFee, geo, quotedFee, outOfRange, ready: deliveryReady, requestLocation };
-  const setQuantity = (id: string, nextQuantity: number) => setQuantities((current) => ({ ...current, [id]: nextQuantity }));
+  const setQuantity = (id: string, nextQuantity: number) => {
+    const added = nextQuantity - (quantitiesRef.current[id] ?? 0);
+    if (added > 0) {
+      // Medição do caminho do cliente (ver analytics.ts): sem nome, telefone, endereço ou observação.
+      trackOnce("first_add", "first_add_to_cart", { ms_since_load: msSinceLoad() });
+      const line = resolveCartLine(id, itemsById, priceOverrides, photoOverrides, nameOverrides);
+      track("add_to_cart", buildAddToCart(id, added, line ? { name: line.name, price: line.price } : null));
+    }
+    setQuantities((current) => ({ ...current, [id]: nextQuantity }));
+  };
   // Cada clique em "Adicionar ao pedido" de um yakisoba cria uma instância
   // nova (não soma numa quantidade só) — assim cada um pode ter seu próprio
   // acompanhamento. Remover uma instância já limpa os acompanhamentos dela
@@ -364,7 +388,7 @@ export default function App() {
     Object.keys(next).forEach((key) => { if (key.startsWith(instanceId + ADDON_SEPARATOR)) delete next[key]; });
     return next;
   });
-  const changeSection = (id: string, scroll = true) => { setActiveSection(id); if (scroll) document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const changeSection = (id: string, scroll = true) => { setActiveSection(id); if (scroll) { track("select_section", { section_id: id }); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); } };
   // Grava o pedido no sistema da loja (roda em segundo plano, depois do WhatsApp já aberto).
   // Se não der nem depois de tentar de novo, avisa o cliente na tela em vez de engolir o erro.
   const saveOrder = (orderId: string, payload: OrderPayload) => registerOrderWithRetry(payload, orderId)
@@ -374,7 +398,7 @@ export default function App() {
       setConfirmedEstimate(estimatedTimeNotice(payload.deliveryType, Date.now()));
       setTimeout(() => setConfirmedOrderNumber(null), 10000);
     })
-    .catch(() => setFailedOrder({ id: orderId, payload }));
+    .catch(() => { track("order_save_failed"); setFailedOrder({ id: orderId, payload }); });
   const retryFailedOrder = () => {
     if (!failedOrder || retryingFailedOrder) return;
     setRetryingFailedOrder(true);
@@ -386,6 +410,7 @@ export default function App() {
     if (deliveryType === "entrega" && (!location.trim() || !houseNumber.trim() || !neighborhood.trim())) return;
     if (deliveryType === "entrega" && !deliveryReady) return;
     setIsSubmitting(true);
+    track("send_order", { currency: "BRL", value: total, items_count: cartItems.length, delivery_type: deliveryType, payment_method: paymentMethod });
     const orderTime = new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
     const cutleryLabel = cutleryOptions.find((option) => option.id === cutlery)?.label ?? "Hashi";
     const paymentLabel = paymentOptions.find((option) => option.id === paymentMethod)?.label ?? "Pix";
