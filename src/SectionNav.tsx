@@ -73,7 +73,7 @@ export default function SectionNav({ items, activeId, onSelect }: { items: Secti
 
   const arrow = "absolute top-1/2 hidden h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-[#1a1513]/15 bg-[#f5f0eb] text-[#1a1513] transition lg:grid hover:border-[#1a1513]/40 motion-reduce:transition-none";
   return (
-    <div className="sticky top-[72px] z-20 -mx-5 mt-10 border-b border-[#1c1512]/10 bg-[#f5f0eb]/95 backdrop-blur lg:-mx-8">
+    <div className="sticky top-[72px] z-20 -mx-5 mt-6 border-b sm:mt-10 border-[#1c1512]/10 bg-[#f5f0eb]/95 backdrop-blur lg:-mx-8">
       <nav aria-label="Seções do cardápio" className="relative">
         <div ref={scroller} onScroll={updateEdges} className="no-scrollbar relative flex overflow-x-auto px-1 lg:scroll-px-12 lg:px-4">
           {items.map((item) => {
