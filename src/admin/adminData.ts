@@ -99,7 +99,7 @@ export function sumRevenue(orders: OrderRecord[]) {
 
 // Bebidas não entram no ranking de "mais vendidos" — o objetivo desse ranking
 // é ajudar a planejar produção de comida, e uma bebida barata vendendo em
-// quantidade acabaria tomando o lugar de um prato no top 3. Atualiza esse
+// quantidade acabaria tomando o lugar de um prato no top 5. Atualiza esse
 // conjunto sempre que adicionar uma bebida nova no cardápio (src/App.tsx).
 const DRINK_ITEM_IDS = new Set(["coca-lata", "agua-com-gas", "coca-1-5"]);
 

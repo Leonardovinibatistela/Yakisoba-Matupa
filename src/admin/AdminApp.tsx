@@ -846,7 +846,7 @@ function Dashboard({ user }: { user: User }) {
     ...(dailyCombos ?? []).map((combo) => ({ id: combo.id, name: combo.name, price: combo.price })),
   ];
   const monthPurchasesTotal = ingredientPurchases.filter((purchase) => purchase.createdAt >= startOfMonth(now)).reduce((total, purchase) => total + purchase.totalCost, 0);
-  // O gráfico e o Top 3 aqui embaixo (dentro de "Rever outra data") seguem o
+  // O gráfico e o Top 5 aqui embaixo (dentro de "Rever outra data") seguem o
   // mês escolhido no calendário, não a semana atual — assim dá pra comparar
   // qualquer mês passado, não só hoje.
   const weekdayChart = revenueByWeekday(pickedMonthOrders ?? []);
@@ -857,15 +857,15 @@ function Dashboard({ user }: { user: User }) {
     return new Date(year, (month || 1) - 1, day || 1);
   })();
 
-  // O ranking "Top 3" acompanha o mês inteiro quando o usuário está em "Hoje"
+  // O ranking "Top 5" acompanha o mês inteiro quando o usuário está em "Hoje"
   // ou "Mês passado" (visão de resumo), mas quando ele escolhe um dia
   // específico no calendário, mostra o ranking só daquele dia — é o que
   // faz sentido pra ver o que vendeu mais NAQUELE dia.
   const lastMonthPresetDate = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d; })();
   const isTodayPicked = pickedDateObj.toDateString() === now.toDateString();
   const isLastMonthPresetPicked = pickedDateObj.getFullYear() === lastMonthPresetDate.getFullYear() && pickedDateObj.getMonth() === lastMonthPresetDate.getMonth() && pickedDateObj.getDate() === 1;
-  const showDayTop3 = !isTodayPicked && !isLastMonthPresetPicked;
-  const pickedTop3 = bestSellers((showDayTop3 ? pickedDayOrders : pickedMonthOrders) ?? [], 3);
+  const showDayTop5 = !isTodayPicked && !isLastMonthPresetPicked;
+  const pickedTop5 = bestSellers((showDayTop5 ? pickedDayOrders : pickedMonthOrders) ?? [], 5);
 
   const ordersLoadingNotice = (
     <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6 text-center">
@@ -1001,15 +1001,15 @@ function Dashboard({ user }: { user: User }) {
               </div>
               <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-4 md:col-span-2">
                 <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">
-                  {showDayTop3
-                    ? `Top 3 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`
-                    : `Top 3 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
+                  {showDayTop5
+                    ? `Top 5 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}`
+                    : `Top 5 mais vendidos em ${pickedDateObj.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}`}
                 </p>
-                {pickedTop3.length === 0 ? (
-                  <p className="mt-3 text-sm text-white/50">{showDayTop3 ? "Sem pedidos nesse dia." : "Sem pedidos nesse mês."}</p>
+                {pickedTop5.length === 0 ? (
+                  <p className="mt-3 text-sm text-white/50">{showDayTop5 ? "Sem pedidos nesse dia." : "Sem pedidos nesse mês."}</p>
                 ) : (
                   <div className="mt-3 space-y-2.5">
-                    {pickedTop3.map((item, index) => (
+                    {pickedTop5.map((item, index) => (
                       <div key={item.name} className="flex items-center gap-3">
                         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ff5a19]/15 text-xs font-extrabold text-[#ff875c]">{index + 1}º</span>
                         <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
@@ -1505,7 +1505,7 @@ function PlusIconAdmin() { return <svg className="h-5 w-5" viewBox="0 0 24 24" a
 
 function PeriodSection({ title, orders, monthLabel }: { title: string; orders: OrderRecord[]; monthLabel?: string }) {
   const revenue = sumRevenue(orders);
-  const top3 = bestSellers(orders, 3);
+  const top5 = bestSellers(orders, 5);
   return (
     <div className="mt-8">
       <h2 className="font-display text-xl font-extrabold tracking-[-.03em]">{title}{monthLabel ? <span className="ml-2 text-sm font-medium text-white/40">({monthLabel})</span> : null}</h2>
@@ -1515,12 +1515,12 @@ function PeriodSection({ title, orders, monthLabel }: { title: string; orders: O
           <StatCard label="Pedidos" value={String(orders.length)} highlight />
         </div>
         <div className="min-w-0 rounded-2xl border border-white/10 bg-[#171211] p-5">
-          <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 3 mais vendidos</p>
-          {top3.length === 0 ? (
+          <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">Top 5 mais vendidos</p>
+          {top5.length === 0 ? (
             <p className="mt-3 text-sm text-white/50">Sem pedidos ainda.</p>
           ) : (
             <div className="mt-3 space-y-2.5">
-              {top3.map((item, index) => (
+              {top5.map((item, index) => (
                 <div key={item.name} className="flex items-center gap-3">
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#ff5a19]/15 text-xs font-extrabold text-[#ff875c]">{index + 1}º</span>
                   <span className="min-w-0 flex-1 truncate text-sm font-bold">{item.name}</span>
