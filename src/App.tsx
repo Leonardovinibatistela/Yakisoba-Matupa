@@ -21,6 +21,8 @@ import { arrangeSections, orderSections, type MenuLayout } from "./menuLayout";
 import SectionNav from "./SectionNav";
 import { chipLabel } from "./sectionNavLogic";
 import { buildAddToCart, msSinceLoad, track, trackOnce } from "./analytics";
+import { pickVisibleTop } from "./topItems";
+import { subscribeTopItems } from "./topItemsStore";
 import { subscribeMenuLayout } from "./menuLayoutStore";
 import { toMenuSection, type CustomSection } from "./customSections";
 import { subscribeCustomSections } from "./customSectionsStore";
@@ -274,6 +276,21 @@ export default function App() {
     dailyCombos.forEach((combo) => map.set(combo.id, fromDailyCombo(combo)));
     return map;
   }, [customItems, dailyCombos]);
+  // Faixa "Combo do dia e mais pedidos" (logo abaixo do topo): a lista dos mais pedidos vem do painel (ver topItems.ts); aqui só
+  // aparece o que ainda está à venda (não excluído, não esgotado), com nome/preço/foto que o dono ajustou.
+  const [topItemIds, setTopItemIds] = useState<string[]>([]);
+  useEffect(() => subscribeTopItems(setTopItemIds), []);
+  const featuredCards = useMemo<FeaturedCard[]>(() => {
+    const yakiIds = new Set<string>([...menuSections.filter((section) => yakiSectionIds.includes(section.id)).flatMap((section) => section.items.map((item) => item.id)), ...customItems.filter((item) => yakiSectionIds.includes(item.sectionId)).map((item) => item.id)]);
+    const today = new Date().getDay();
+    const combos: FeaturedCard[] = dailyCombos.filter((combo) => combo.days.includes(today)).map((combo) => ({ key: `combo-${combo.id}`, kind: "combo", id: combo.id, name: combo.name, price: combo.price, image: combo.image, yaki: false }));
+    const available = (id: string) => itemsById.has(id) && !hiddenIds.has(id) && !soldOutIds.has(id) && !dailyCombos.some((combo) => combo.id === id);
+    const top: FeaturedCard[] = pickVisibleTop(topItemIds, available).map((id, index) => {
+      const item = applyOverrides(itemsById.get(id)!, priceOverrides, photoOverrides, nameOverrides);
+      return { key: `top-${id}`, kind: "top", id, name: item.name, price: item.price, image: item.image, rank: index + 1, yaki: yakiIds.has(id) };
+    });
+    return [...combos, ...top];
+  }, [topItemIds, itemsById, hiddenIds, soldOutIds, priceOverrides, photoOverrides, nameOverrides, dailyCombos, customItems]);
   const [emergencyPaused, setEmergencyPaused] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
@@ -478,6 +495,7 @@ export default function App() {
       : !storeOpen && <div className="relative z-30 mt-[72px] bg-[#ff5a19] px-5 py-3 text-center text-sm font-bold text-white">🕒 Estamos fechados agora — funcionamos {STORE_HOURS_LABEL}. Dá pra ver o cardápio, mas os pedidos só abrem no nosso horário.</div>}
     <main>
       <section id="inicio" className="relative isolate flex min-h-[560px] items-end overflow-hidden pt-[72px] sm:min-h-[790px] lg:min-h-[820px]" aria-labelledby="hero-title"><img src="sooba-hero.jpg" alt="Prato de yakisoba e seleção de sushi (uramaki, sashimi de salmão) do Sooba sobre mesa escura" className="absolute inset-0 -z-20 h-full w-full object-cover object-[62%_center] motion-safe:animate-[hero-in_1.2s_ease-out_both]" /><div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(16,13,12,.96)_0%,rgba(16,13,12,.80)_34%,rgba(16,13,12,.24)_75%),linear-gradient(0deg,rgba(16,13,12,.94)_0%,transparent_49%)]" /><div className="hero-glow absolute -left-28 top-36 -z-10 h-72 w-72 rounded-full bg-[#ff4d12]/20 blur-[105px]" /><div className="mx-auto w-full max-w-7xl px-5 pb-10 pt-10 sm:pb-20 sm:pt-24 lg:px-8 lg:pb-24"><div className="max-w-[655px]"><p className="reveal-up text-xs font-bold uppercase tracking-[0.23em] text-[#ff7c50]">Comida japonesa: sushi e yakisoba delivery em Matupá e Peixoto de Azevedo</p><div className="reveal-up delay-1 mt-4 overflow-hidden"><p className="font-display text-[clamp(4.2rem,11vw,8.8rem)] font-black leading-[.76] tracking-[-0.105em] text-white">SOOBA<span className="text-[#ff5a19]">.</span></p></div><h1 id="hero-title" className="reveal-up delay-2 mt-7 max-w-xl font-display text-[clamp(2.25rem,4.3vw,4.4rem)] font-extrabold leading-[.95] tracking-[-0.07em] text-[#fff9f3]">Seu delivery favorito de sushi e yakisoba.</h1><p className="reveal-up delay-3 mt-5 max-w-md text-base leading-relaxed text-white/70 sm:text-lg">Uramaki, sashimi de salmão e yakisoba, prontos pra pedir. A gente prepara em Matupá, você confirma pelo WhatsApp.</p><div className="reveal-up delay-4 mt-8 flex flex-wrap gap-3"><a href="#menu" className="group inline-flex items-center gap-2 rounded-full bg-[#ff5a19] px-5 py-3.5 text-sm font-bold text-white shadow-[0_12px_35px_rgba(255,90,25,.24)] transition hover:-translate-y-0.5 hover:bg-[#ff6a2e]">Ver cardápio <ArrowIcon className="h-4 w-4 transition group-hover:translate-x-0.5" /></a><a href="https://wa.me/556692026783" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/[0.07] px-5 py-3.5 text-sm font-bold text-white backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-white/[0.14]"><WhatsAppIcon className="h-4 w-4" /> Pedir no WhatsApp</a></div></div></div><a href="#menu" className="absolute bottom-7 right-6 hidden items-center gap-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/60 lg:flex"><span className="h-px w-9 bg-white/30" /> Explore o cardápio</a></section>
+      <FeaturedStrip cards={featuredCards} quantities={quantities} setQuantity={setQuantity} addYakiInstance={addYakiInstance} />
       <MenuSectionView quantities={quantities} setQuantity={setQuantity} addYakiInstance={addYakiInstance} removeYakiInstance={removeYakiInstance} activeSection={activeSection} changeSection={changeSection} cartItems={cartItems} subtotal={subtotal} total={total} checkout={checkout} deliveryType={deliveryType} setDeliveryType={setDeliveryType} deliveryFee={deliveryFee} cutlery={cutlery} setCutlery={setCutlery} chopstickAdapter={chopstickAdapter} setChopstickAdapter={setChopstickAdapter} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} pixCopied={pixCopied} setPixCopied={setPixCopied} storeOpen={storeOpen} emergencyPaused={emergencyPaused} notes={notes} setNotes={setNotes} customerName={customerName} setCustomerName={setCustomerName} customerPhone={customerPhone} setCustomerPhone={setCustomerPhone} location={location} setLocation={setLocation} houseNumber={houseNumber} setHouseNumber={setHouseNumber} neighborhood={neighborhood} setNeighborhood={setNeighborhood} soldOutIds={soldOutIds} priceOverrides={priceOverrides} photoOverrides={photoOverrides} nameOverrides={nameOverrides} descriptionOverrides={descriptionOverrides} customItems={customItems} hiddenIds={hiddenIds} />
       <section className="border-y border-white/[0.08] bg-[#171211] py-6" aria-label="Destaques do Sooba"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-10 gap-y-3 px-5 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 lg:px-8"><span className="text-white/85">Sushi com presença</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Yakisoba feito na hora</span><span className="hidden h-1 w-1 rounded-full bg-[#ff5a19] sm:block" /><span>Pedido direto no WhatsApp</span></div></section>
       <NoveltyHighlight quantities={quantities} setQuantity={setQuantity} />
@@ -532,6 +550,46 @@ function NoveltyHighlight({ quantities, setQuantity }: { quantities: Record<stri
           <img src="cardapio/copo-felicidade.jpg" alt="Copo da Felicidade" loading="lazy" className="aspect-square w-full rounded-2xl bg-black/40 object-contain sm:w-64 lg:w-72" />
         </div>
       </div>
+    </div>
+  </section>;
+}
+
+type FeaturedCard = { key: string; kind: "combo" | "top"; id: string; name: string; price: number; image?: string; rank?: number; yaki: boolean };
+
+/** Faixa compacta logo abaixo do topo: combo do dia + itens mais pedidos, com "+" direto (igual aos apps de delivery). Some sozinha se não tiver nada. */
+function FeaturedStrip({ cards, quantities, setQuantity, addYakiInstance }: { cards: FeaturedCard[]; quantities: Record<string, number>; setQuantity: (id: string, nextQuantity: number) => void; addYakiInstance: (baseId: string) => void }) {
+  if (cards.length === 0) return null;
+  const hasCombo = cards.some((card) => card.kind === "combo");
+  const hasTop = cards.some((card) => card.kind === "top");
+  const title = hasCombo && hasTop ? "Combo do dia e mais pedidos" : hasTop ? "Mais pedidos" : "Combo do dia";
+  return <section className="bg-[#100d0c] pb-7 pt-6 sm:pb-9 sm:pt-8" aria-labelledby="destaques-title">
+    <div className="mx-auto max-w-7xl px-5 lg:px-8">
+      <h2 id="destaques-title" className="font-display text-xl font-extrabold tracking-[-.03em] text-white sm:text-2xl">{title}</h2>
+      <ul className="no-scrollbar -mx-5 mt-4 flex snap-x gap-3 overflow-x-auto px-5 pb-1 lg:-mx-8 lg:px-8">
+        {cards.map((card) => {
+          const instances = card.yaki ? Object.keys(quantities).filter((qid) => (quantities[qid] ?? 0) > 0 && qid.startsWith(card.id + INSTANCE_SEPARATOR) && !qid.includes(ADDON_SEPARATOR)).length : 0;
+          const quantity = card.yaki ? instances : (quantities[card.id] ?? 0);
+          const addButton = <button type="button" onClick={() => (card.yaki ? addYakiInstance(card.id) : setQuantity(card.id, 1))} className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-full bg-[#ff5a19] px-3 text-xs font-bold text-white transition hover:bg-[#ff6a2e]"><span aria-hidden="true">+</span> Adicionar<span className="sr-only"> {card.name}</span></button>;
+          return <li key={card.key} className="w-[158px] shrink-0 snap-start sm:w-[196px]">
+            <div className={`flex h-full flex-col overflow-hidden rounded-2xl border bg-[#1a1513] ${card.kind === "combo" ? "border-[#ff5a19]/50" : "border-white/10"}`}>
+              <div className="relative h-24 bg-gradient-to-br from-[#2a1d17] to-[#161110] sm:h-28">
+                {card.kind === "top" && !card.image && <span aria-hidden="true" className="absolute inset-0 grid place-items-center font-display text-5xl font-black text-white/10">{card.rank}º</span>}
+                {card.kind === "combo" && !card.image && <span aria-hidden="true" className="absolute inset-0 grid place-items-center text-4xl opacity-25">🔥</span>}
+                {card.image && <img src={card.image} alt="" loading="lazy" className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+                <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[.08em] text-white ${card.kind === "combo" ? "bg-[#ff5a19]" : "bg-black/60"}`}>{card.kind === "combo" ? "🔥 Combo do dia" : `${card.rank}º mais pedido`}</span>
+              </div>
+              <div className="flex flex-1 flex-col p-3">
+                <p className="line-clamp-2 min-h-[2.5rem] text-sm font-bold leading-snug text-white">{card.name}</p>
+                <p className="mt-1 font-display text-base font-extrabold tracking-[-.03em] text-[#ff875c]">{formatTotal(card.price)}</p>
+                <div className="mt-3">
+                  {card.yaki || quantity === 0 ? addButton : <QuantityControl quantity={quantity} onChange={(next) => setQuantity(card.id, next)} label={card.name} dark />}
+                  {card.yaki && quantity > 0 && <p className="mt-1.5 text-center text-[11px] font-bold text-white/60">No pedido: {quantity}</p>}
+                </div>
+              </div>
+            </div>
+          </li>;
+        })}
+      </ul>
     </div>
   </section>;
 }
