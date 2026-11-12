@@ -99,7 +99,8 @@ export function sumRevenue(orders: OrderRecord[]) {
 
 // Bebidas não entram no ranking de "mais vendidos" — o objetivo desse ranking
 // é ajudar a planejar produção de comida, e uma bebida barata vendendo em
-// quantidade acabaria tomando o lugar de um prato no top 5. Atualiza esse
+// quantidade acabaria tomando o lugar de um prato no top 5. Acompanhamentos de yakisoba
+// (linhas com "::" no id) também ficam de fora, pelo mesmo motivo. Atualiza esse
 // conjunto sempre que adicionar uma bebida nova no cardápio (src/App.tsx).
 const DRINK_ITEM_IDS = new Set(["coca-lata", "agua-com-gas", "coca-1-5"]);
 
@@ -107,6 +108,7 @@ export function bestSellers(orders: OrderRecord[], limit: number) {
   const quantityByItem = new Map<string, number>();
   orders.forEach((order) => order.items.forEach((item) => {
     if (DRINK_ITEM_IDS.has(item.id)) return;
+    if (item.id.includes("::")) return; // acompanhamento (brócolis, repolho...) não é prato: não entra no ranking
     quantityByItem.set(item.name, (quantityByItem.get(item.name) ?? 0) + item.quantity);
   }));
   return Array.from(quantityByItem.entries())

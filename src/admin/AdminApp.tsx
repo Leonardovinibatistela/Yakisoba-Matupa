@@ -13,6 +13,8 @@ import { addCustomItem, removeCustomItem, subscribeCustomItems, type CustomMenuI
 import { deleteItemForever, setItemHidden, subscribeDeletedItems, subscribeHiddenItems } from "../hiddenItems";
 import { arrangeSections, compatibleSectionIds, moveItemInSection, moveItemToSection, moveSection, snapshotLayout, type MenuLayout } from "../menuLayout";
 import { resetMenuLayout, saveMenuLayout, subscribeMenuLayout } from "../menuLayoutStore";
+import { TOP_WINDOW_DAYS, mergeOrdersById, rankTopItemIds, sameIds } from "../topItems";
+import { saveTopItems, subscribeTopItems } from "../topItemsStore";
 import { MAX_CUSTOM_SECTIONS, addSection, newSectionId, normalizeSectionName, removeSection, renameSection, sectionDeleteBlocker, toMenuSection, validateSectionName, type CustomSection } from "../customSections";
 import { saveCustomSections, subscribeCustomSections } from "../customSectionsStore";
 import { YAKI_SECTION_IDS } from "./manualOrderLogic";
@@ -523,6 +525,29 @@ function Dashboard({ user }: { user: User }) {
   // novo etc.) — somados aos itens "de fábrica" na hora de listar cada seção.
   const [customItems, setCustomItems] = useState<CustomMenuItem[]>([]);
   useEffect(() => subscribeCustomItems(setCustomItems), []);
+
+  // "Mais pedidos" do site (regra em topItems.ts): este painel conta o que mais saiu nos últimos 30 dias e guarda SÓ a lista de ids
+  // (nenhum dado de cliente) num campo público; o site lê e mostra. Roda em qualquer painel aberto, só grava quando a lista MUDA
+  // e no máximo a cada 10 minutos, e só depois de uns segundos de tudo carregado (itens excluídos, bebidas criadas pelo dono...).
+  const [storedTopIds, setStoredTopIds] = useState<string[] | null>(null);
+  const [last30Orders, setLast30Orders] = useState<OrderRecord[] | null>(null);
+  const [topSettled, setTopSettled] = useState(false);
+  const lastTopWriteAt = useRef(0);
+  useEffect(() => subscribeTopItems(setStoredTopIds), []);
+  useEffect(() => {
+    const now = new Date();
+    fetchOrdersBetween(new Date(now.getTime() - TOP_WINDOW_DAYS * 24 * 60 * 60 * 1000), endOfDay(now)).then(setLast30Orders).catch(() => {});
+    const timer = window.setTimeout(() => setTopSettled(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!topSettled || storedTopIds === null || last30Orders === null) return;
+    const drinkIds = [...(menuSections.find((section) => section.id === "bebidas")?.items ?? []).map((item) => item.id), ...customItems.filter((item) => item.sectionId === "bebidas").map((item) => item.id)];
+    const wanted = rankTopItemIds(mergeOrdersById(last30Orders, orders ?? []), { now: new Date(), excludeIds: new Set([...drinkIds, ...hiddenIds, ...deletedIds]) });
+    if (sameIds(wanted, storedTopIds) || Date.now() - lastTopWriteAt.current < 10 * 60 * 1000) return;
+    lastTopWriteAt.current = Date.now();
+    saveTopItems(wanted).catch(() => {});
+  }, [topSettled, storedTopIds, last30Orders, orders, customItems, hiddenIds, deletedIds]);
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const handleRemoveCustomItem = (item: CustomMenuItem) => {
     if (!window.confirm(`Remover "${item.name}" do cardápio? Essa ação não pode ser desfeita.`)) return;
