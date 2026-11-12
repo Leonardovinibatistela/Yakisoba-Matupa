@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
 import { auth } from "../firebase";
-import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
+import { bestSellers, deleteOrder, endOfDay, endOfMonth, fetchOrdersBetween, ordersInRange, recentOrdersStart, revenueByWeekday, startOfDay, startOfMonth, startOfWeek, subscribeToRecentOrders, sumRevenue, type OrderRecord } from "./adminData";
 import { uploadImageToCloudinary } from "../cloudinary";
 import { addonSections, menuSections } from "../menuData";
 import { setItemSoldOut, subscribeSoldOutItems } from "../soldOut";
@@ -535,15 +535,27 @@ function Dashboard({ user }: { user: User }) {
   const lastTopWriteAt = useRef(0);
   useEffect(() => subscribeTopItems(setStoredTopIds), []);
   useEffect(() => {
-    const now = new Date();
-    fetchOrdersBetween(new Date(now.getTime() - TOP_WINDOW_DAYS * 24 * 60 * 60 * 1000), endOfDay(now)).then(setLast30Orders).catch(() => {});
+    // Só aceita resposta do SERVIDOR: sem internet a leitura comum devolve lista vazia/parcial do cache e apagaria o "mais pedidos" do
+    // site. Se falhar, tenta de novo a cada 1 minuto (até 5 vezes).
+    let cancelled = false;
+    let retryTimer: number | undefined;
+    let attempts = 0;
+    const load = () => {
+      const now = new Date();
+      fetchOrdersBetween(new Date(now.getTime() - TOP_WINDOW_DAYS * 24 * 60 * 60 * 1000), endOfDay(now), { serverOnly: true })
+        .then((loaded) => { if (!cancelled) setLast30Orders(loaded); })
+        .catch(() => { if (!cancelled && ++attempts < 5) retryTimer = window.setTimeout(load, 60000); });
+    };
+    load();
     const timer = window.setTimeout(() => setTopSettled(true), 8000);
-    return () => window.clearTimeout(timer);
+    return () => { cancelled = true; window.clearTimeout(retryTimer); window.clearTimeout(timer); };
   }, []);
   useEffect(() => {
-    if (!topSettled || storedTopIds === null || last30Orders === null) return;
+    if (!topSettled || storedTopIds === null || last30Orders === null || orders === null) return;
     const drinkIds = [...(menuSections.find((section) => section.id === "bebidas")?.items ?? []).map((item) => item.id), ...customItems.filter((item) => item.sectionId === "bebidas").map((item) => item.id)];
-    const wanted = rankTopItemIds(mergeOrdersById(last30Orders, orders ?? []), { now: new Date(), excludeIds: new Set([...drinkIds, ...hiddenIds, ...deletedIds]) });
+    // Hoje/semana/mês vêm ao vivo (`orders`: pedido apagado pelo dono some na hora); a busca dos 30 dias só completa o que é mais antigo.
+    const recentStart = recentOrdersStart(new Date());
+    const wanted = rankTopItemIds(mergeOrdersById(last30Orders.filter((order) => order.createdAt < recentStart), orders), { now: new Date(), excludeIds: new Set([...drinkIds, ...hiddenIds, ...deletedIds]) });
     if (sameIds(wanted, storedTopIds) || Date.now() - lastTopWriteAt.current < 10 * 60 * 1000) return;
     lastTopWriteAt.current = Date.now();
     saveTopItems(wanted).catch(() => {});

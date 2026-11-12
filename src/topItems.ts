@@ -14,6 +14,8 @@ export const TOP_SHOW_COUNT = 5;
 export const TOP_MIN_SHOWN = 3;
 /** Com poucos pedidos no período o "mais pedido" não quer dizer nada: o painel guarda lista vazia e o site esconde a faixa. */
 export const TOP_MIN_ORDERS = 10;
+/** Por linha de pedido conta no máximo isso: um pedido de 100 unidades (ou um pedido forjado) não pode decidir sozinho o "mais pedido". */
+export const TOP_MAX_LINE_QUANTITY = 10;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ID_FORMAT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -32,7 +34,7 @@ export function rankTopItemIds(orders: RankableOrder[], options: { now: Date; ex
       if (isAddon || !ID_FORMAT.test(id) || options.excludeIds?.has(id)) continue;
       const quantity = Number(line.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) continue;
-      totals.set(id, (totals.get(id) ?? 0) + quantity);
+      totals.set(id, (totals.get(id) ?? 0) + Math.min(quantity, TOP_MAX_LINE_QUANTITY));
     }
   }
   return [...totals.entries()]

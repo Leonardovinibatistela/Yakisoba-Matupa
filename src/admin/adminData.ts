@@ -1,4 +1,4 @@
-import { collection, deleteDoc, doc, getDocs, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, getDocsFromServer, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { OrderLineItem } from "../orders";
 
@@ -63,20 +63,28 @@ function mapSnapshotToOrders(snapshot: QuerySnapshot): OrderRecord[] {
   });
 }
 
-/** Busca pedidos entre duas datas (usado pro "hoje/semana/mês" ao vivo e pra pesquisa de um dia específico). */
-export async function fetchOrdersBetween(from: Date, to: Date): Promise<OrderRecord[]> {
+/**
+ * Busca pedidos entre duas datas (usado pro "hoje/semana/mês" ao vivo e pra pesquisa de um dia específico).
+ * serverOnly: só aceita resposta do servidor (se estiver sem internet dá erro em vez de devolver uma lista vazia/parcial do cache) —
+ * usado por quem publica algo pro site a partir desses pedidos (ver "Mais pedidos").
+ */
+export async function fetchOrdersBetween(from: Date, to: Date, options: { serverOnly?: boolean } = {}): Promise<OrderRecord[]> {
   const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", Timestamp.fromDate(from)), where("createdAt", "<", Timestamp.fromDate(to)));
-  const snapshot = await getDocs(ordersQuery);
+  const snapshot = options.serverOnly ? await getDocsFromServer(ordersQuery) : await getDocs(ordersQuery);
   return mapSnapshotToOrders(snapshot);
+}
+
+/** De quando em diante os pedidos "ao vivo" (hoje/semana/mês) são lidos: início da semana ou do mês, o que vier primeiro. */
+export function recentOrdersStart(now: Date): Date {
+  const monthStart = startOfMonth(now);
+  const weekStart = startOfWeek(now);
+  return weekStart < monthStart ? weekStart : monthStart;
 }
 
 /** Busca tudo desde o início da semana ou do mês (o que vier primeiro) até agora — cobre hoje/semana/mês numa única consulta. */
 export async function fetchRecentOrders(): Promise<OrderRecord[]> {
   const now = new Date();
-  const monthStart = startOfMonth(now);
-  const weekStart = startOfWeek(now);
-  const queryStart = weekStart < monthStart ? weekStart : monthStart;
-  return fetchOrdersBetween(queryStart, endOfDay(now));
+  return fetchOrdersBetween(recentOrdersStart(now), endOfDay(now));
 }
 
 /**
@@ -85,10 +93,7 @@ export async function fetchRecentOrders(): Promise<OrderRecord[]> {
  * escutar (chamar quando o componente desmontar).
  */
 export function subscribeToRecentOrders(onUpdate: (orders: OrderRecord[]) => void, onError: (error: unknown) => void): () => void {
-  const now = new Date();
-  const monthStart = startOfMonth(now);
-  const weekStart = startOfWeek(now);
-  const queryStart = weekStart < monthStart ? weekStart : monthStart;
+  const queryStart = recentOrdersStart(new Date());
   const ordersQuery = query(collection(db, "orders"), where("createdAt", ">=", Timestamp.fromDate(queryStart)));
   return onSnapshot(ordersQuery, (snapshot) => onUpdate(mapSnapshotToOrders(snapshot)), onError);
 }
