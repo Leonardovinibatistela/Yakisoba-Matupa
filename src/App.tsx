@@ -21,6 +21,7 @@ import { arrangeSections, orderSections, type MenuLayout } from "./menuLayout";
 import SectionNav from "./SectionNav";
 import { chipLabel } from "./sectionNavLogic";
 import { buildAddToCart, msSinceLoad, track, trackOnce } from "./analytics";
+import { stripThumbUrl } from "./imageThumb";
 import { pickVisibleTop } from "./topItems";
 import { subscribeTopItems } from "./topItemsStore";
 import { subscribeMenuLayout } from "./menuLayoutStore";
@@ -280,17 +281,17 @@ export default function App() {
   // aparece o que ainda está à venda (não excluído, não esgotado), com nome/preço/foto que o dono ajustou.
   const [topItemIds, setTopItemIds] = useState<string[]>([]);
   useEffect(() => subscribeTopItems(setTopItemIds), []);
+  const todayDay = new Date().getDay(); // fora do useMemo: o App refaz a conta a cada 30s, então a faixa troca o combo à meia-noite mesmo com a página aberta
   const featuredCards = useMemo<FeaturedCard[]>(() => {
     const yakiIds = new Set<string>([...menuSections.filter((section) => yakiSectionIds.includes(section.id)).flatMap((section) => section.items.map((item) => item.id)), ...customItems.filter((item) => yakiSectionIds.includes(item.sectionId)).map((item) => item.id)]);
-    const today = new Date().getDay();
-    const combos: FeaturedCard[] = dailyCombos.filter((combo) => combo.days.includes(today)).map((combo) => ({ key: `combo-${combo.id}`, kind: "combo", id: combo.id, name: combo.name, price: combo.price, image: combo.image, yaki: false }));
+    const combos: FeaturedCard[] = dailyCombos.filter((combo) => combo.days.includes(todayDay)).map((combo) => ({ key: `combo-${combo.id}`, kind: "combo", id: combo.id, name: combo.name, price: combo.price, image: combo.image, yaki: false }));
     const available = (id: string) => itemsById.has(id) && !hiddenIds.has(id) && !soldOutIds.has(id) && !dailyCombos.some((combo) => combo.id === id);
-    const top: FeaturedCard[] = pickVisibleTop(topItemIds, available).map((id, index) => {
+    const top: FeaturedCard[] = pickVisibleTop(topItemIds, available).map((id) => {
       const item = applyOverrides(itemsById.get(id)!, priceOverrides, photoOverrides, nameOverrides);
-      return { key: `top-${id}`, kind: "top", id, name: item.name, price: item.price, image: item.image, rank: index + 1, yaki: yakiIds.has(id) };
+      return { key: `top-${id}`, kind: "top", id, name: item.name, price: item.price, image: item.image, rank: topItemIds.indexOf(id) + 1, yaki: yakiIds.has(id) }; // posição de verdade na lista (se o 1º está esgotado, o próximo continua sendo o 2º)
     });
     return [...combos, ...top];
-  }, [topItemIds, itemsById, hiddenIds, soldOutIds, priceOverrides, photoOverrides, nameOverrides, dailyCombos, customItems]);
+  }, [topItemIds, itemsById, hiddenIds, soldOutIds, priceOverrides, photoOverrides, nameOverrides, dailyCombos, customItems, todayDay]);
   const [emergencyPaused, setEmergencyPaused] = useState(false);
   useEffect(() => subscribeEmergencyPause(setEmergencyPaused), []);
   const [manualOpenInfo, setManualOpenInfo] = useState<ManualOpenInfo>({ open: false, openedAt: null });
@@ -388,6 +389,7 @@ export default function App() {
     const added = nextQuantity - (quantitiesRef.current[id] ?? 0);
     if (added > 0) {
       // Medição do caminho do cliente (ver analytics.ts): sem nome, telefone, endereço ou observação.
+      trackOnce("view_menu", "view_menu"); // quem adiciona pela faixa do topo pode nunca passar pelo título do cardápio: sem isso o funil perderia esse cliente
       trackOnce("first_add", "first_add_to_cart", { ms_since_load: msSinceLoad() });
       const line = resolveCartLine(id, itemsById, priceOverrides, photoOverrides, nameOverrides);
       track("add_to_cart", buildAddToCart(id, added, line ? { name: line.name, price: line.price } : null));
@@ -569,21 +571,21 @@ function FeaturedStrip({ cards, quantities, setQuantity, addYakiInstance }: { ca
         {cards.map((card) => {
           const instances = card.yaki ? Object.keys(quantities).filter((qid) => (quantities[qid] ?? 0) > 0 && qid.startsWith(card.id + INSTANCE_SEPARATOR) && !qid.includes(ADDON_SEPARATOR)).length : 0;
           const quantity = card.yaki ? instances : (quantities[card.id] ?? 0);
-          const addButton = <button type="button" onClick={() => (card.yaki ? addYakiInstance(card.id) : setQuantity(card.id, 1))} className="inline-flex h-9 w-full items-center justify-center gap-1 rounded-full bg-[#ff5a19] px-3 text-xs font-bold text-white transition hover:bg-[#ff6a2e]"><span aria-hidden="true">+</span> Adicionar<span className="sr-only"> {card.name}</span></button>;
+          const addButton = <button type="button" onClick={() => (card.yaki ? addYakiInstance(card.id) : setQuantity(card.id, 1))} className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-full bg-[#ff5a19] px-3 text-xs font-bold text-white transition hover:bg-[#ff6a2e]"><span aria-hidden="true">+</span> Adicionar<span className="sr-only"> {card.name}</span></button>;
           return <li key={card.key} className="w-[158px] shrink-0 snap-start sm:w-[196px]">
             <div className={`flex h-full flex-col overflow-hidden rounded-2xl border bg-[#1a1513] ${card.kind === "combo" ? "border-[#ff5a19]/50" : "border-white/10"}`}>
               <div className="relative h-24 bg-gradient-to-br from-[#2a1d17] to-[#161110] sm:h-28">
                 {card.kind === "top" && !card.image && <span aria-hidden="true" className="absolute inset-0 grid place-items-center font-display text-5xl font-black text-white/10">{card.rank}º</span>}
                 {card.kind === "combo" && !card.image && <span aria-hidden="true" className="absolute inset-0 grid place-items-center text-4xl opacity-25">🔥</span>}
-                {card.image && <img src={card.image} alt="" loading="lazy" className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+                {card.image && <img src={stripThumbUrl(card.image)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" onError={(event) => { const img = event.currentTarget; if (img.getAttribute("src") !== card.image) img.src = card.image!; else img.style.display = "none"; }} />}
                 <span className={`absolute left-2 top-2 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[.08em] text-white ${card.kind === "combo" ? "bg-[#ff5a19]" : "bg-black/60"}`}>{card.kind === "combo" ? "🔥 Combo do dia" : `${card.rank}º mais pedido`}</span>
+                {card.yaki && quantity > 0 && <span className="absolute bottom-2 right-2 rounded-full bg-[#ff5a19] px-2 py-1 text-[10px] font-black text-white">No pedido: {quantity}</span>}
               </div>
               <div className="flex flex-1 flex-col p-3">
                 <p className="line-clamp-2 min-h-[2.5rem] text-sm font-bold leading-snug text-white">{card.name}</p>
                 <p className="mt-1 font-display text-base font-extrabold tracking-[-.03em] text-[#ff875c]">{formatTotal(card.price)}</p>
                 <div className="mt-3">
-                  {card.yaki || quantity === 0 ? addButton : <QuantityControl quantity={quantity} onChange={(next) => setQuantity(card.id, next)} label={card.name} dark />}
-                  {card.yaki && quantity > 0 && <p className="mt-1.5 text-center text-[11px] font-bold text-white/60">No pedido: {quantity}</p>}
+                  {card.yaki || quantity === 0 ? addButton : <div className="flex justify-center"><QuantityControl quantity={quantity} onChange={(next) => setQuantity(card.id, next)} label={card.name} dark /></div>}
                 </div>
               </div>
             </div>
