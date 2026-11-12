@@ -8,6 +8,8 @@
 // - Pra conferir o que SERIA enviado sem mandar nada: no navegador, `localStorage.setItem("sooba_ga_trace", "1")` e recarregar; os eventos
 //   ficam em `window.__ga_events`.
 
+import { baseItemId } from "./itemIds";
+
 export type GaItem = { item_id: string; item_name?: string; price?: number; quantity?: number };
 export type GaParamValue = string | number | boolean | undefined | null | GaItem[];
 export type GaParams = Record<string, GaParamValue>;
@@ -59,13 +61,7 @@ export function cleanParams(params: GaParams): Record<string, unknown> {
   return out;
 }
 
-/** O id da linha do carrinho vira o id do item do cardápio ("medio-frango#abc::brocolis" → "brocolis" é acompanhamento). */
-export function baseItemId(lineId: string): { id: string; isAddon: boolean } {
-  const addon = lineId.indexOf("::");
-  if (addon !== -1) return { id: lineId.slice(addon + 2), isAddon: true };
-  const instance = lineId.indexOf("#");
-  return { id: instance !== -1 ? lineId.slice(0, instance) : lineId, isAddon: false };
-}
+export { baseItemId };
 
 export function buildAddToCart(lineId: string, quantityAdded: number, info: { name?: string; price?: number } | null): GaParams {
   const { id, isAddon } = baseItemId(lineId);
