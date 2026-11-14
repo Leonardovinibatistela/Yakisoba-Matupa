@@ -572,7 +572,7 @@ function FeaturedStrip({ cards, quantities, setQuantity, addYakiInstance }: { ca
           const instances = card.yaki ? Object.keys(quantities).filter((qid) => (quantities[qid] ?? 0) > 0 && qid.startsWith(card.id + INSTANCE_SEPARATOR) && !qid.includes(ADDON_SEPARATOR)).length : 0;
           const quantity = card.yaki ? instances : (quantities[card.id] ?? 0);
           const addButton = <button type="button" onClick={() => (card.yaki ? addYakiInstance(card.id) : setQuantity(card.id, 1))} className="inline-flex h-10 w-full items-center justify-center gap-1 rounded-full bg-[#ff5a19] px-3 text-xs font-bold text-white transition hover:bg-[#ff6a2e]"><span aria-hidden="true">+</span> Adicionar<span className="sr-only"> {card.name}</span></button>;
-          return <li key={card.key} className="w-[158px] shrink-0 snap-start sm:w-[196px]">
+          return <li key={card.key} className="relative w-[158px] shrink-0 snap-start sm:w-[196px]">
             <div className={`flex h-full flex-col overflow-hidden rounded-2xl border bg-[#1a1513] ${card.kind === "combo" ? "border-[#ff5a19]/50" : "border-white/10"}`}>
               <div className="relative h-24 bg-gradient-to-br from-[#2a1d17] to-[#161110] sm:h-28">
                 {card.kind === "top" && !card.image && <span aria-hidden="true" className="absolute inset-0 grid place-items-center font-display text-5xl font-black text-white/10">{card.rank}º</span>}
