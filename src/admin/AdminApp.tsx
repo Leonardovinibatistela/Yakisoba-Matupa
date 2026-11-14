@@ -924,9 +924,9 @@ function Dashboard({ user }: { user: User }) {
       {saveError && <div className="sticky top-3 z-50 mx-auto mb-5 max-w-5xl rounded-2xl border border-red-400/40 bg-[#2a1210] p-4 shadow-lg"><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-line text-sm font-bold text-red-300">⚠️ {saveError}</p><button type="button" onClick={() => setSaveError(null)} className="shrink-0 rounded-full border border-white/15 px-3 py-1 text-xs font-bold text-white/70 hover:border-white/35 hover:text-white">Fechar</button></div></div>}
       <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
+          <div className="min-w-0 max-w-full">
             <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Sooba · Painel</p>
-            <h1 className="mt-1 font-display text-3xl font-extrabold tracking-[-.045em]">Olá, {user.email}</h1>
+            <h1 className="mt-1 font-display text-2xl font-extrabold tracking-[-.045em] [overflow-wrap:anywhere] sm:text-3xl">Olá, {user.email}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={handleToggleEmergencyPause} disabled={togglingPause} title="Emergência (cozinha lotou, faltou algo)? Pausa o envio de pedido no site na hora, sem mexer no horário oficial." className={`rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait disabled:opacity-50 ${emergencyPaused ? "border-red-400/60 bg-red-500 text-white" : "border-white/15 text-white/70 hover:border-white/35 hover:text-white"}`}>
