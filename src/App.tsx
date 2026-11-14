@@ -286,9 +286,9 @@ export default function App() {
     const yakiIds = new Set<string>([...menuSections.filter((section) => yakiSectionIds.includes(section.id)).flatMap((section) => section.items.map((item) => item.id)), ...customItems.filter((item) => yakiSectionIds.includes(item.sectionId)).map((item) => item.id)]);
     const combos: FeaturedCard[] = dailyCombos.filter((combo) => combo.days.includes(todayDay)).map((combo) => ({ key: `combo-${combo.id}`, kind: "combo", id: combo.id, name: combo.name, price: combo.price, image: combo.image, yaki: false }));
     const available = (id: string) => itemsById.has(id) && !hiddenIds.has(id) && !soldOutIds.has(id) && !dailyCombos.some((combo) => combo.id === id);
-    const top: FeaturedCard[] = pickVisibleTop(topItemIds, available).map((id) => {
+    const top: FeaturedCard[] = pickVisibleTop(topItemIds, available).map((id, index) => {
       const item = applyOverrides(itemsById.get(id)!, priceOverrides, photoOverrides, nameOverrides);
-      return { key: `top-${id}`, kind: "top", id, name: item.name, price: item.price, image: item.image, rank: topItemIds.indexOf(id) + 1, yaki: yakiIds.has(id) }; // posição de verdade na lista (se o 1º está esgotado, o próximo continua sendo o 2º)
+      return { key: `top-${id}`, kind: "top", id, name: item.name, price: item.price, image: item.image, rank: index + 1, yaki: yakiIds.has(id) }; // 1º a 5º = ordem dos cartões que aparecem: se um item sumir ou esgotar, os seguintes sobem (pedido do dono)
     });
     return [...combos, ...top];
   }, [topItemIds, itemsById, hiddenIds, soldOutIds, priceOverrides, photoOverrides, nameOverrides, dailyCombos, customItems, todayDay]);
