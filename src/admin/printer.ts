@@ -191,6 +191,7 @@ export async function openUsbPrinter(device: UsbDevice): Promise<PrinterConnecti
     await device.close().catch(() => undefined);
     throw new Error(`Não consegui assumir a impressora USB. ${USB_DRIVER_HELP}\n\n(${(error as Error)?.message ?? error})`);
   }
+  void loadReceiptFooter(); // já baixa o rodapé (personagem) pra o primeiro pedido não esperar
   return {
     kind: "usb",
     name: device.productName || "USB",
@@ -266,7 +267,7 @@ export function centerAreaCommands(paperDots: number | undefined, columns = LINE
 const textBytes = (text: string): number[] => Array.from(toPrinterText(text)).map((char) => char.charCodeAt(0) & 0xff);
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora (o desenho está em receiptLayout.ts). */
-export type ReceiptBytesOptions = { paperDots?: number; extraFeedLines?: number; columns?: number; reverseBold?: boolean; itemStyle?: "band" | "bigband" | "tall"; obsTall?: boolean };
+export type ReceiptBytesOptions = { paperDots?: number; extraFeedLines?: number; columns?: number; reverseBold?: boolean; itemStyle?: "band" | "bigband" | "tall"; obsTall?: boolean; footer?: Uint8Array };
 export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptions = {}): Uint8Array {
   const columns = options.columns ?? LINE_WIDTH;
   const bytes: number[] = [...CMD_INIT, ...centerAreaCommands(options.paperDots, columns)];
@@ -278,6 +279,11 @@ export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptio
     });
     bytes.push(...CMD_REVERSE_OFF, ...CMD_BOLD_OFF, 0x0a, ...cmdSize(1, 1));
   });
+  if (options.footer) {
+    // rodapé com imagem (personagem + obrigado): um espaço e a imagem, antes do avanço do papel e do corte
+    bytes.push(...CMD_ALIGN.left, 0x0a);
+    for (let i = 0; i < options.footer.length; i++) bytes.push(options.footer[i]);
+  }
   bytes.push(...CMD_ALIGN.left, 0x0a, 0x0a, 0x0a);
   for (let i = 0; i < (options.extraFeedLines ?? 0); i++) bytes.push(0x0a);
   bytes.push(...CMD_CUT);
@@ -286,5 +292,59 @@ export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptio
 
 /** Imprime um pedido — monta o recibo (centralizado, se for o papel de 80mm do USB) e já manda pra impressora conectada. */
 export async function printOrder(connection: PrinterConnection, order: OrderRecord): Promise<void> {
-  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, columns: USB_COLUMNS, extraFeedLines: USB_EXTRA_FEED_LINES, itemStyle: "bigband", obsTall: true } : {}));
+  if (connection.kind !== "usb") {
+    await connection.output.write(buildReceiptBytes(order));
+    return;
+  }
+  const footer = await loadReceiptFooter(); // se a imagem não carregar, o pedido imprime igual, sem o personagem
+  await connection.output.write(buildReceiptBytes(order, { paperDots: USB_PAPER_DOTS, columns: USB_COLUMNS, extraFeedLines: USB_EXTRA_FEED_LINES, itemStyle: "bigband", obsTall: true, footer: footer ?? undefined }));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Rodapé com imagem (personagem + "ありがとうございます") — só no USB de 80mm
+// ---------------------------------------------------------------------------------------------------------------------
+/** PNG preto e branco, 576 pontos de largura (o papel todo), em public/recibo/. */
+export const RECEIPT_FOOTER_URL = "recibo/rodape.png";
+
+/** Converte pixels RGBA em imagem raster ESC/POS (GS v 0): 1 bit por ponto (1 = preto), 8 pontos por byte, largura completada com branco. */
+export function rasterFromRgba(rgba: ArrayLike<number>, width: number, height: number): Uint8Array {
+  const bytesPerRow = Math.ceil(width / 8);
+  const out = new Uint8Array(8 + bytesPerRow * height);
+  out.set([GS, 0x76, 0x30, 0x00, bytesPerRow & 0xff, bytesPerRow >> 8, height & 0xff, height >> 8]);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const dark = rgba[i + 3] > 127 && rgba[i] * 0.299 + rgba[i + 1] * 0.587 + rgba[i + 2] * 0.114 < 128;
+      if (dark) out[8 + y * bytesPerRow + (x >> 3)] |= 0x80 >> (x & 7);
+    }
+  }
+  return out;
+}
+
+let footerPromise: Promise<Uint8Array | null> | null = null;
+/** Baixa o rodapé uma vez e deixa em memória. Qualquer falha devolve null (e tenta de novo no próximo pedido): imprimir o pedido nunca depende da imagem. */
+export function loadReceiptFooter(): Promise<Uint8Array | null> {
+  footerPromise ??= (async () => {
+    try {
+      if (typeof fetch !== "function" || typeof createImageBitmap !== "function" || typeof document === "undefined") return null;
+      const response = await fetch(RECEIPT_FOOTER_URL, typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? { signal: AbortSignal.timeout(4000) } : undefined);
+      if (!response.ok) return null;
+      const bitmap = await createImageBitmap(await response.blob());
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) return null;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, bitmap.width, bitmap.height);
+      context.drawImage(bitmap, 0, 0);
+      return rasterFromRgba(context.getImageData(0, 0, bitmap.width, bitmap.height).data, bitmap.width, bitmap.height);
+    } catch {
+      return null;
+    }
+  })().then((footer) => {
+    if (!footer) footerPromise = null;
+    return footer;
+  });
+  return footerPromise;
 }
