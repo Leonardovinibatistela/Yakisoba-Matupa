@@ -28,7 +28,7 @@ import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
 import { describeSite, planCancelSkip, planSitePress, planSkipToday, type SiteWrites } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
-import { connectPrinter, printOrder as printOrderReceipt, type PrinterConnection } from "./printer";
+import { connectPrinter, connectUsbPrinter, printOrder as printOrderReceipt, reconnectUsbPrinter, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
 import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, setIngredientReferenceCost, setIngredientCategory, renameIngredient, deleteIngredient, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
@@ -72,6 +72,9 @@ const KITCHEN_TAB_FOR_STAFF = true;
 // O botão "❌ Deletar de vez" (embaixo de "Restaurar no site", em item já excluído do site) apaga o item também da lista do painel e não tem
 // desfazer. Por enquanto só aparece pra quem cuida do sistema; só libere pra equipe da loja (true) depois do OK do desenvolvedor.
 const ITEM_DELETE_FOR_STAFF = false;
+// O botão "🔌 Conectar impressora USB" (impressora térmica de 80mm no cabo, ex.: POS80) é novo e ainda não foi testado com a impressora de
+// verdade: por enquanto só aparece pra quem cuida do sistema; só libere pra equipe da loja (true) depois do teste e do OK do desenvolvedor.
+const PRINTER_USB_FOR_STAFF = false;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
@@ -162,6 +165,7 @@ function Dashboard({ user }: { user: User }) {
   const isDeveloper = DEVELOPER_TAB_EMAILS.includes((user.email ?? "").toLowerCase());
   const kitchenAllowed = isDeveloper || KITCHEN_TAB_FOR_STAFF;
   const itemDeleteAllowed = isDeveloper || ITEM_DELETE_FOR_STAFF;
+  const printerUsbAllowed = isDeveloper || PRINTER_USB_FOR_STAFF;
   const manualOrderAllowed = isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF;
   // Aparelho travado na Cozinha: só aquela tela aparece (sem faturamento, financeiro, estoque…) até digitar a senha.
   const [kitchenLocked, setKitchenLocked] = useState(() => kitchenAllowed && isKitchenLocked());
@@ -234,12 +238,25 @@ function Dashboard({ user }: { user: User }) {
   useEffect(() => subscribeDeliveryFeeConfig(setDeliveryFeeConfigState), []);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   useEffect(() => subscribeStockMovements(setStockMovements), []);
-  const handleConnectPrinter = () => {
+  // Impressora USB que já foi liberada antes neste navegador: reconecta sozinha ao abrir o painel (sem abrir o seletor de novo).
+  useEffect(() => {
+    if (!printerUsbAllowed) return;
+    let cancelled = false;
+    reconnectUsbPrinter()
+      .then((conn) => {
+        if (!conn || cancelled) return;
+        setPrinterConn((current) => current ?? conn);
+        conn.onDisconnect(() => setPrinterConn((current) => (current === conn ? null : current)));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [printerUsbAllowed]);
+  const handleConnectPrinter = (connect: () => Promise<PrinterConnection>) => {
     setConnectingPrinter(true);
-    connectPrinter()
+    connect()
       .then((conn) => {
         setPrinterConn(conn);
-        conn.device.addEventListener("gattserverdisconnected", () => setPrinterConn(null));
+        conn.onDisconnect(() => setPrinterConn((current) => (current === conn ? null : current)));
       })
       .catch((error) => setSaveError(`Não foi possível conectar na impressora.\n\nDetalhe do erro: ${error?.message ?? error}`))
       .finally(() => setConnectingPrinter(false));
@@ -247,7 +264,7 @@ function Dashboard({ user }: { user: User }) {
   const handlePrintOrder = (order: OrderRecord) => {
     if (!printerConn) { setSaveError("Conecta a impressora primeiro (botão \"Conectar impressora\" aqui em cima)."); return; }
     setPrintingOrderId(order.id);
-    printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não foi possível imprimir o Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setPrintingOrderId(null));
+    printOrderReceipt(printerConn, order).catch((error) => setSaveError(`Não foi possível imprimir o Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setPrintingOrderId(null));
   };
   const handleToggleAutoPrint = () => {
     setAutoPrint((current) => {
@@ -737,7 +754,7 @@ function Dashboard({ user }: { user: User }) {
     });
     if (!autoPrint || !printerConn) return;
     newOrders.forEach((order) => {
-      printOrderReceipt(printerConn.characteristic, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
+      printOrderReceipt(printerConn, order).catch((error) => setSaveError(`Não consegui imprimir o Pedido #${order.orderNumber} automaticamente.\n\nDetalhe do erro: ${error?.message ?? error}`));
     });
   }, [orders, autoPrint, printerConn, soundEnabled, soundVolume, deletingOrderId]);
 
@@ -1061,11 +1078,18 @@ function Dashboard({ user }: { user: User }) {
 
           <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             {printerConn ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-300">🖨️ Impressora conectada{printerConn.device.name ? `: ${printerConn.device.name}` : ""}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1.5 text-[11px] font-bold text-emerald-300">🖨️ Impressora conectada{printerConn.name ? `: ${printerConn.name}` : ""}</span>
             ) : (
-              <button type="button" onClick={handleConnectPrinter} disabled={connectingPrinter} className="rounded-full border border-white/15 px-3.5 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
-                {connectingPrinter ? "Conectando…" : "🖨️ Conectar impressora"}
-              </button>
+              <>
+                <button type="button" onClick={() => handleConnectPrinter(connectPrinter)} disabled={connectingPrinter} className="rounded-full border border-white/15 px-3.5 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
+                  {connectingPrinter ? "Conectando…" : "🖨️ Conectar impressora"}
+                </button>
+                {printerUsbAllowed && (
+                  <button type="button" onClick={() => handleConnectPrinter(connectUsbPrinter)} disabled={connectingPrinter} className="rounded-full border border-white/15 px-3.5 py-1.5 text-[11px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
+                    {connectingPrinter ? "Conectando…" : "🔌 Conectar impressora USB"}
+                  </button>
+                )}
+              </>
             )}
             <label className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${printerConn ? "text-white/70" : "text-white/30"}`}>
               <input type="checkbox" checked={autoPrint} onChange={handleToggleAutoPrint} disabled={!printerConn} className="h-3.5 w-3.5" />
