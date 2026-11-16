@@ -55,8 +55,8 @@ export interface UsbDevice {
 interface UsbApi {
   requestDevice(options: { filters: { vendorId?: number; productId?: number; classCode?: number }[] }): Promise<UsbDevice>;
   getDevices(): Promise<UsbDevice[]>;
-  addEventListener(type: "disconnect", listener: (event: { device: UsbDevice }) => void): void;
-  removeEventListener(type: "disconnect", listener: (event: { device: UsbDevice }) => void): void;
+  addEventListener(type: "connect" | "disconnect", listener: (event: { device: UsbDevice }) => void): void;
+  removeEventListener(type: "connect" | "disconnect", listener: (event: { device: UsbDevice }) => void): void;
 }
 declare global {
   interface Navigator {
@@ -142,6 +142,8 @@ const USB_FILTERS = [{ classCode: USB_PRINTER_CLASS }, { vendorId: 0x0416 }];
 export const USB_PAPER_DOTS = 576;
 const DOTS_PER_COLUMN = 12;
 const USB_CHUNK_SIZE = 4096;
+/** Linhas em branco a mais antes do corte no papel de 80mm: a lâmina fica uns 2cm depois da cabeça de impressão e senão cortaria as últimas linhas. */
+export const USB_EXTRA_FEED_LINES = 4;
 
 const USB_DRIVER_HELP =
   "O Windows está usando essa impressora com o driver dele, então o navegador não consegue falar com ela. " +
@@ -212,17 +214,28 @@ export async function connectUsbPrinter(): Promise<PrinterConnection> {
   return openUsbPrinter(device);
 }
 
-/** Reconecta sozinho numa impressora USB que o dono já liberou antes (sem abrir o seletor). Devolve null se não houver. */
-export async function reconnectUsbPrinter(): Promise<PrinterConnection | null> {
-  if (!navigator.usb) return null;
-  for (const device of await navigator.usb.getDevices()) {
-    try {
-      return await openUsbPrinter(device);
-    } catch {
-      // Está em uso em outra aba, ou o driver ainda não foi trocado — tenta o próximo.
+let reconnecting: Promise<PrinterConnection | null> | null = null;
+/** Reconecta sozinho numa impressora USB que o dono já liberou antes (sem abrir o seletor). Devolve null se não houver. Chamadas ao mesmo tempo dividem a mesma tentativa. */
+export function reconnectUsbPrinter(): Promise<PrinterConnection | null> {
+  if (!navigator.usb) return Promise.resolve(null);
+  reconnecting ??= (async () => {
+    for (const device of (await navigator.usb?.getDevices()) ?? []) {
+      try {
+        return await openUsbPrinter(device);
+      } catch {
+        // Está em uso em outra aba, ou o driver ainda não foi trocado — tenta o próximo.
+      }
     }
-  }
-  return null;
+    return null;
+  })().finally(() => { reconnecting = null; });
+  return reconnecting;
+}
+
+/** Avisa quando um aparelho USB já liberado volta (impressora desligada e ligada de novo, cabo recolocado, PC acordou). Devolve a função que para de avisar. */
+export function watchUsbPrinterAvailable(listener: () => void): () => void {
+  const handler = () => listener();
+  navigator.usb?.addEventListener("connect", handler);
+  return () => navigator.usb?.removeEventListener("connect", handler);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -252,7 +265,7 @@ export function centerAreaCommands(paperDots: number | undefined): number[] {
 const textBytes = (text: string): number[] => Array.from(toPrinterText(text)).map((char) => char.charCodeAt(0) & 0xff);
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora (o desenho está em receiptLayout.ts). */
-export function buildReceiptBytes(order: OrderRecord, options: { paperDots?: number } = {}): Uint8Array {
+export function buildReceiptBytes(order: OrderRecord, options: { paperDots?: number; extraFeedLines?: number } = {}): Uint8Array {
   const bytes: number[] = [...CMD_INIT, ...centerAreaCommands(options.paperDots)];
   buildReceiptLines(order).forEach((line) => {
     bytes.push(...CMD_ALIGN[line.align], ...cmdSize(line.w, line.h));
@@ -263,11 +276,12 @@ export function buildReceiptBytes(order: OrderRecord, options: { paperDots?: num
     bytes.push(...CMD_REVERSE_OFF, ...CMD_BOLD_OFF, 0x0a, ...cmdSize(1, 1));
   });
   bytes.push(...CMD_ALIGN.left, 0x0a, 0x0a, 0x0a);
+  for (let i = 0; i < (options.extraFeedLines ?? 0); i++) bytes.push(0x0a);
   bytes.push(...CMD_CUT);
   return new Uint8Array(bytes);
 }
 
 /** Imprime um pedido — monta o recibo (centralizado, se for o papel de 80mm do USB) e já manda pra impressora conectada. */
 export async function printOrder(connection: PrinterConnection, order: OrderRecord): Promise<void> {
-  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS } : {}));
+  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, extraFeedLines: USB_EXTRA_FEED_LINES } : {}));
 }

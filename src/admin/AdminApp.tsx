@@ -28,7 +28,7 @@ import DeliveryFeePanel from "./DeliveryFeePanel";
 import type { ManualOpenInfo } from "../manualOpenRule";
 import { describeSite, planCancelSkip, planSitePress, planSkipToday, type SiteWrites } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
-import { connectPrinter, connectUsbPrinter, printOrder as printOrderReceipt, reconnectUsbPrinter, type PrinterConnection } from "./printer";
+import { connectPrinter, connectUsbPrinter, printOrder as printOrderReceipt, reconnectUsbPrinter, watchUsbPrinterAvailable, type PrinterConnection } from "./printer";
 import { playNewOrderChime } from "./notificationSound";
 import { subscribeIngredients, subscribeIngredientPurchases, addIngredient, registerPurchase, adjustStock, setMinStock, setIngredientReferenceCost, setIngredientCategory, renameIngredient, deleteIngredient, editPurchase, deletePurchase, type Ingredient, type IngredientPurchase } from "./ingredients";
 import { subscribeRecipes, setRecipe, type Recipes } from "./recipes";
@@ -239,17 +239,25 @@ function Dashboard({ user }: { user: User }) {
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   useEffect(() => subscribeStockMovements(setStockMovements), []);
   // Impressora USB que já foi liberada antes neste navegador: reconecta sozinha ao abrir o painel (sem abrir o seletor de novo).
+  const printerConnRef = useRef<PrinterConnection | null>(null);
+  printerConnRef.current = printerConn;
   useEffect(() => {
     if (!printerUsbAllowed) return;
     let cancelled = false;
-    reconnectUsbPrinter()
-      .then((conn) => {
-        if (!conn || cancelled) return;
-        setPrinterConn((current) => current ?? conn);
-        conn.onDisconnect(() => setPrinterConn((current) => (current === conn ? null : current)));
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
+    const tryReconnect = () => {
+      if (printerConnRef.current) return;
+      reconnectUsbPrinter()
+        .then((conn) => {
+          if (!conn || cancelled || printerConnRef.current) return;
+          setPrinterConn(conn);
+          conn.onDisconnect(() => setPrinterConn((current) => (current === conn ? null : current)));
+        })
+        .catch(() => undefined);
+    };
+    tryReconnect();
+    // Impressora desligada e ligada de novo (ou o PC acordou): o navegador avisa e a gente reconecta sozinho.
+    const stopWatching = watchUsbPrinterAvailable(tryReconnect);
+    return () => { cancelled = true; stopWatching(); };
   }, [printerUsbAllowed]);
   const handleConnectPrinter = (connect: () => Promise<PrinterConnection>) => {
     setConnectingPrinter(true);
