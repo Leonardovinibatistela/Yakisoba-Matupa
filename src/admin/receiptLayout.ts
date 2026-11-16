@@ -123,8 +123,9 @@ function hangingLines(prefix: string, text: string, width = LINE_WIDTH): string[
  * as barras do E/L, com a letra grande os traços brancos ficam grossos e legíveis;
  * "tall" = item em negrito e letra mais alta, sem tarja.
  */
-export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "bigband" | "tall" };
-export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band" };
+export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "bigband" | "tall"; obsTall: boolean };
+// obsTall: a observação do pedido sai com o dobro da altura, sem negrito (a equipe precisa bater o olho e ver o que foi pedido de diferente).
+export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band", obsTall: false };
 
 /** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.itemStyle = como o item aparece (tarja preta ou negrito alto). */
 export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<ReceiptStyle> = {}): ReceiptLine[] {
@@ -161,7 +162,7 @@ export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<Rece
   const extras: ReceiptLine[] = [];
   if (cutlery) extras.push(line(`TALHER: ${cutlery}`, { bold: true }));
   if (notes.adapter) extras.push(line("** ADAPTADOR DE HASHI: SIM **", { bold: true, reverse: true }));
-  if (notes.obs) wrapText(`OBS: ${notes.obs}`, width).forEach((text) => extras.push(line(text, { bold: true })));
+  if (notes.obs) wrapText(`OBS: ${notes.obs}`, width).forEach((text) => extras.push(line(text, style.obsTall ? { h: 2 } : { bold: true })));
   if (extras.length > 0) lines.push(...extras, divider(width));
 
   // Itens.

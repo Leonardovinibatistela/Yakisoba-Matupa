@@ -266,11 +266,11 @@ export function centerAreaCommands(paperDots: number | undefined, columns = LINE
 const textBytes = (text: string): number[] => Array.from(toPrinterText(text)).map((char) => char.charCodeAt(0) & 0xff);
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora (o desenho está em receiptLayout.ts). */
-export type ReceiptBytesOptions = { paperDots?: number; extraFeedLines?: number; columns?: number; reverseBold?: boolean; itemStyle?: "band" | "bigband" | "tall" };
+export type ReceiptBytesOptions = { paperDots?: number; extraFeedLines?: number; columns?: number; reverseBold?: boolean; itemStyle?: "band" | "bigband" | "tall"; obsTall?: boolean };
 export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptions = {}): Uint8Array {
   const columns = options.columns ?? LINE_WIDTH;
   const bytes: number[] = [...CMD_INIT, ...centerAreaCommands(options.paperDots, columns)];
-  buildReceiptLines(order, { width: columns, reverseBold: options.reverseBold ?? true, itemStyle: options.itemStyle ?? "band" }).forEach((line) => {
+  buildReceiptLines(order, { width: columns, reverseBold: options.reverseBold ?? true, itemStyle: options.itemStyle ?? "band", obsTall: options.obsTall ?? false }).forEach((line) => {
     bytes.push(...CMD_ALIGN[line.align], ...cmdSize(line.w, line.h));
     line.parts.forEach((part) => {
       // Liga/desliga negrito e fundo preto no começo de cada trecho (impressora clone mais simples não pega no meio da linha).
@@ -286,5 +286,5 @@ export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptio
 
 /** Imprime um pedido — monta o recibo (centralizado, se for o papel de 80mm do USB) e já manda pra impressora conectada. */
 export async function printOrder(connection: PrinterConnection, order: OrderRecord): Promise<void> {
-  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, columns: USB_COLUMNS, extraFeedLines: USB_EXTRA_FEED_LINES, itemStyle: "bigband" } : {}));
+  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, columns: USB_COLUMNS, extraFeedLines: USB_EXTRA_FEED_LINES, itemStyle: "bigband", obsTall: true } : {}));
 }
