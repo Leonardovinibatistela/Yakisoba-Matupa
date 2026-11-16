@@ -68,6 +68,15 @@ function leftRight(left: string, right: string, o: LineOptions = {}, width = LIN
 /** Linha de produto: nome em fundo preto (letra branca) e o valor à direita. */
 function productRows(label: string, price: string, style: ReceiptStyle): ReceiptLine[] {
   const text = toPrinterText(label);
+  if (style.itemStyle === "bigband") {
+    // Letra no dobro: só cabem a metade das colunas. Sem negrito dentro da tarja (negrito afina as letras brancas). Valor na mesma linha, se couber.
+    const cols = Math.floor(style.width / 2);
+    const big = { w: 2, h: 2 };
+    if (text.length + 1 + price.length <= cols) {
+      return [{ parts: [{ text, reverse: true, bold: false }, { text: " ".repeat(cols - text.length - price.length) + price, bold: true }], align: "left", ...big }];
+    }
+    return [...wrapText(text, cols).map((part) => line(part, { reverse: true, bold: false, ...big })), line(price, { align: "right", bold: true, ...big })];
+  }
   if (style.itemStyle === "tall") {
     // Letra branca fina em fundo preto some na impressora térmica barata do 80mm (o E perde a barra de baixo): o item vai em negrito, com o dobro da altura.
     const tall = { bold: true, h: 2 };
@@ -108,8 +117,13 @@ function hangingLines(prefix: string, text: string, width = LINE_WIDTH): string[
 }
 
 /** Monta o recibo do pedido como uma lista de linhas formatadas. */
-/** itemStyle: "band" = item em tarja preta (letra branca, como o modelo da loja no 58mm); "tall" = item em negrito e letra mais alta, sem tarja. */
-export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "tall" };
+/**
+ * itemStyle: "band" = item em tarja preta (letra branca, como o modelo da loja no 58mm);
+ * "bigband" = a mesma tarja preta, mas com a letra no dobro do tamanho (largura e altura): na impressora do 80mm a letra normal em fundo preto perdia
+ * as barras do E/L, com a letra grande os traços brancos ficam grossos e legíveis;
+ * "tall" = item em negrito e letra mais alta, sem tarja.
+ */
+export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "bigband" | "tall" };
 export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band" };
 
 /** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.itemStyle = como o item aparece (tarja preta ou negrito alto). */
