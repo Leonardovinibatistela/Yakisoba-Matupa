@@ -68,6 +68,12 @@ function leftRight(left: string, right: string, o: LineOptions = {}, width = LIN
 /** Linha de produto: nome em fundo preto (letra branca) e o valor à direita. */
 function productRows(label: string, price: string, style: ReceiptStyle): ReceiptLine[] {
   const text = toPrinterText(label);
+  if (style.itemStyle === "tall") {
+    // Letra branca fina em fundo preto some na impressora térmica barata do 80mm (o E perde a barra de baixo): o item vai em negrito, com o dobro da altura.
+    const tall = { bold: true, h: 2 };
+    if (text.length + 1 + price.length <= style.width) return [line(text + " ".repeat(style.width - text.length - price.length) + price, tall)];
+    return [...wrapText(text, style.width).map((part) => line(part, tall)), line(price, { ...tall, align: "right" })];
+  }
   // Negrito DENTRO da tarja preta afina as letras brancas até sumirem (o E vira I): em impressora que sai assim, reverseBold = false.
   const bold = style.reverseBold;
   if (text.length + 1 + price.length <= style.width) {
@@ -102,10 +108,11 @@ function hangingLines(prefix: string, text: string, width = LINE_WIDTH): string[
 }
 
 /** Monta o recibo do pedido como uma lista de linhas formatadas. */
-export type ReceiptStyle = { width: number; reverseBold: boolean };
-export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true };
+/** itemStyle: "band" = item em tarja preta (letra branca, como o modelo da loja no 58mm); "tall" = item em negrito e letra mais alta, sem tarja. */
+export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "tall" };
+export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band" };
 
-/** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.reverseBold = negrito dentro da tarja preta dos itens. */
+/** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.itemStyle = como o item aparece (tarja preta ou negrito alto). */
 export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<ReceiptStyle> = {}): ReceiptLine[] {
   const style: ReceiptStyle = { ...DEFAULT_RECEIPT_STYLE, ...styleOptions };
   const width = style.width;
