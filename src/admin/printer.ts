@@ -138,8 +138,9 @@ async function sendBytes(characteristic: BleCharacteristic, bytes: Uint8Array): 
 const USB_PRINTER_CLASS = 0x07;
 /** Qualquer coisa que se apresente como impressora USB, e os chips Winbond (0x0416) das POS-80 genéricas. */
 const USB_FILTERS = [{ classCode: USB_PRINTER_CLASS }, { vendorId: 0x0416 }];
-/** Papel de 80mm = 576 pontos. O recibo é montado em 32 colunas (384 pontos, o modelo aprovado pela loja) e sai centralizado no papel. */
+/** Papel de 80mm = 576 pontos = 48 colunas de letra normal (12 pontos cada): o recibo ocupa o papel inteiro. */
 export const USB_PAPER_DOTS = 576;
+export const USB_COLUMNS = 48;
 const DOTS_PER_COLUMN = 12;
 const USB_CHUNK_SIZE = 4096;
 /** Linhas em branco a mais antes do corte no papel de 80mm: a lâmina fica uns 2cm depois da cabeça de impressão e senão cortaria as últimas linhas. */
@@ -254,8 +255,8 @@ const CMD_CUT = [GS, 0x56, 0x00];
 const cmdSize = (w: number, h: number) => [GS, 0x21, ((Math.min(8, Math.max(1, w)) - 1) << 4) | (Math.min(8, Math.max(1, h)) - 1)];
 
 /** Em papel mais largo que o recibo (80mm), centraliza a área impressa: margem esquerda (GS L) e largura da área (GS W). */
-export function centerAreaCommands(paperDots: number | undefined): number[] {
-  const receiptDots = LINE_WIDTH * DOTS_PER_COLUMN;
+export function centerAreaCommands(paperDots: number | undefined, columns = LINE_WIDTH): number[] {
+  const receiptDots = columns * DOTS_PER_COLUMN;
   if (!paperDots || paperDots <= receiptDots) return [];
   const margin = Math.floor((paperDots - receiptDots) / 2);
   return [GS, 0x4c, margin & 0xff, margin >> 8, GS, 0x57, receiptDots & 0xff, receiptDots >> 8];
@@ -265,9 +266,11 @@ export function centerAreaCommands(paperDots: number | undefined): number[] {
 const textBytes = (text: string): number[] => Array.from(toPrinterText(text)).map((char) => char.charCodeAt(0) & 0xff);
 
 /** Monta o recibo do pedido em bytes ESC/POS, prontos pra mandar pra impressora (o desenho está em receiptLayout.ts). */
-export function buildReceiptBytes(order: OrderRecord, options: { paperDots?: number; extraFeedLines?: number } = {}): Uint8Array {
-  const bytes: number[] = [...CMD_INIT, ...centerAreaCommands(options.paperDots)];
-  buildReceiptLines(order).forEach((line) => {
+export type ReceiptBytesOptions = { paperDots?: number; extraFeedLines?: number; columns?: number; reverseBold?: boolean };
+export function buildReceiptBytes(order: OrderRecord, options: ReceiptBytesOptions = {}): Uint8Array {
+  const columns = options.columns ?? LINE_WIDTH;
+  const bytes: number[] = [...CMD_INIT, ...centerAreaCommands(options.paperDots, columns)];
+  buildReceiptLines(order, { width: columns, reverseBold: options.reverseBold ?? true }).forEach((line) => {
     bytes.push(...CMD_ALIGN[line.align], ...cmdSize(line.w, line.h));
     line.parts.forEach((part) => {
       // Liga/desliga negrito e fundo preto no começo de cada trecho (impressora clone mais simples não pega no meio da linha).
@@ -283,5 +286,5 @@ export function buildReceiptBytes(order: OrderRecord, options: { paperDots?: num
 
 /** Imprime um pedido — monta o recibo (centralizado, se for o papel de 80mm do USB) e já manda pra impressora conectada. */
 export async function printOrder(connection: PrinterConnection, order: OrderRecord): Promise<void> {
-  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, extraFeedLines: USB_EXTRA_FEED_LINES } : {}));
+  await connection.output.write(buildReceiptBytes(order, connection.kind === "usb" ? { paperDots: USB_PAPER_DOTS, columns: USB_COLUMNS, extraFeedLines: USB_EXTRA_FEED_LINES, reverseBold: false } : {}));
 }

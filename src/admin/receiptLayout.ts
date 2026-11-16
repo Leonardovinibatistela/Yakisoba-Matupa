@@ -52,13 +52,13 @@ export function wrapText(text: string, width: number): string[] {
 
 type LineOptions = { align?: ReceiptLine["align"]; w?: number; h?: number; bold?: boolean; reverse?: boolean };
 const line = (text: string, o: LineOptions = {}): ReceiptLine => ({ parts: [{ text: toPrinterText(text), bold: o.bold, reverse: o.reverse }], align: o.align ?? "left", w: o.w ?? 1, h: o.h ?? 1 });
-const columnsOf = (l: Pick<ReceiptLine, "w">) => Math.floor(LINE_WIDTH / l.w);
-const divider = (): ReceiptLine => line("-".repeat(LINE_WIDTH));
+const columnsOf = (l: Pick<ReceiptLine, "w">, width = LINE_WIDTH) => Math.floor(width / l.w);
+const divider = (width = LINE_WIDTH): ReceiptLine => line("-".repeat(width));
 const blank = (): ReceiptLine => line("");
 
 /** Texto à esquerda e valor à direita na mesma linha; se não couber, o texto quebra e o valor vai sozinho à direita. */
-function leftRight(left: string, right: string, o: LineOptions = {}): ReceiptLine[] {
-  const cols = columnsOf({ w: o.w ?? 1 });
+function leftRight(left: string, right: string, o: LineOptions = {}, width = LINE_WIDTH): ReceiptLine[] {
+  const cols = columnsOf({ w: o.w ?? 1 }, width);
   const l = toPrinterText(left);
   const r = toPrinterText(right);
   if (l.length + 1 + r.length <= cols) return [line(l + " ".repeat(cols - l.length - r.length) + r, o)];
@@ -66,12 +66,14 @@ function leftRight(left: string, right: string, o: LineOptions = {}): ReceiptLin
 }
 
 /** Linha de produto: nome em fundo preto (letra branca) e o valor à direita. */
-function productRows(label: string, price: string): ReceiptLine[] {
+function productRows(label: string, price: string, style: ReceiptStyle): ReceiptLine[] {
   const text = toPrinterText(label);
-  if (text.length + 1 + price.length <= LINE_WIDTH) {
-    return [{ parts: [{ text, reverse: true, bold: true }, { text: " ".repeat(LINE_WIDTH - text.length - price.length) + price }], align: "left", w: 1, h: 1 }];
+  // Negrito DENTRO da tarja preta afina as letras brancas até sumirem (o E vira I): em impressora que sai assim, reverseBold = false.
+  const bold = style.reverseBold;
+  if (text.length + 1 + price.length <= style.width) {
+    return [{ parts: [{ text, reverse: true, bold }, { text: " ".repeat(style.width - text.length - price.length) + price }], align: "left", w: 1, h: 1 }];
   }
-  return [...wrapText(text, LINE_WIDTH).map((part) => line(part, { reverse: true, bold: true })), line(price, { align: "right" })];
+  return [...wrapText(text, style.width).map((part) => line(part, { reverse: true, bold })), line(price, { align: "right" })];
 }
 
 /** Separa as observações gravadas no pedido em: quem fez (pedido manual), talher/adaptador e a observação em si. */
@@ -95,12 +97,18 @@ const CUTLERY_LABEL: Record<string, string> = { hashi: "HASHI", garfo: "GARFO", 
 const PAYMENT_LABELS: Record<string, string> = { pix: "PIX", cartao: "CREDITO", debito: "DEBITO", dinheiro: "DINHEIRO" };
 
 /** Texto com rótulo na frente ("END.: ..."): as linhas seguintes ficam alinhadas com o começo do texto, sem passar da largura. */
-function hangingLines(prefix: string, text: string): string[] {
-  return wrapText(text, LINE_WIDTH - prefix.length).map((part, index) => (index === 0 ? prefix : " ".repeat(prefix.length)) + part);
+function hangingLines(prefix: string, text: string, width = LINE_WIDTH): string[] {
+  return wrapText(text, width - prefix.length).map((part, index) => (index === 0 ? prefix : " ".repeat(prefix.length)) + part);
 }
 
 /** Monta o recibo do pedido como uma lista de linhas formatadas. */
-export function buildReceiptLines(order: OrderRecord): ReceiptLine[] {
+export type ReceiptStyle = { width: number; reverseBold: boolean };
+export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true };
+
+/** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.reverseBold = negrito dentro da tarja preta dos itens. */
+export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<ReceiptStyle> = {}): ReceiptLine[] {
+  const style: ReceiptStyle = { ...DEFAULT_RECEIPT_STYLE, ...styleOptions };
+  const width = style.width;
   const lines: ReceiptLine[] = [];
   const delivery = order.deliveryType === "entrega";
   const pickup = order.deliveryType === "retirada";
@@ -109,12 +117,12 @@ export function buildReceiptLines(order: OrderRecord): ReceiptLine[] {
 
   // Cabeçalho: ENTREGAR / RETIRAR gigante (o entregador e o balcão enxergam de longe) e dados da loja.
   if (delivery || pickup) lines.push(line(delivery ? "ENTREGAR" : "RETIRAR", { align: "center", w: 3, h: 2, bold: true }), blank());
-  lines.push(line(STORE_NAME, { align: "center", bold: true }), line(`FONE: ${STORE_PHONE}`, { align: "center" }), line(`CNPJ: ${STORE_CNPJ}`, { align: "center" }), divider());
+  lines.push(line(STORE_NAME, { align: "center", bold: true }), line(`FONE: ${STORE_PHONE}`, { align: "center" }), line(`CNPJ: ${STORE_CNPJ}`, { align: "center" }), divider(width));
 
   // Pedido, hora prevista, hora do pedido e quem fez.
   lines.push(line(`PEDIDO #${order.orderNumber}`, { align: "center", w: 2, h: 2, bold: true }));
   if (delivery || pickup) lines.push(line(`PREVISTO PARA ${storeTime(createdMs + ESTIMATED_MINUTES[delivery ? "entrega" : "retirada"] * 60000)}`, { align: "center", bold: true }));
-  lines.push(line(`PEDIDO AS: ${storeDateTime(createdMs)}`), line(`FEITO POR: ${notes.madeBy ? notes.madeBy : "SITE"}`), divider());
+  lines.push(line(`PEDIDO AS: ${storeDateTime(createdMs)}`), line(`FEITO POR: ${notes.madeBy ? notes.madeBy : "SITE"}`), divider(width));
 
   // Cliente.
   const name = (order.customerName ?? "").trim();
@@ -124,43 +132,43 @@ export function buildReceiptLines(order: OrderRecord): ReceiptLine[] {
     if (phone && phone !== "-") lines.push(line(`FONE: ${phone}`));
   }
   const address = (order.location ?? "").trim();
-  if (delivery && address) hangingLines("END.: ", address).forEach((text) => lines.push(line(text, { bold: true })));
-  if (name || phone || (delivery && address)) lines.push(divider());
+  if (delivery && address) hangingLines("END.: ", address, width).forEach((text) => lines.push(line(text, { bold: true })));
+  if (name || phone || (delivery && address)) lines.push(divider(width));
 
   // Talher / adaptador / observação.
   const cutlery = order.cutlery ? CUTLERY_LABEL[order.cutlery] : notes.cutlery ? toPrinterText(notes.cutlery) : null;
   const extras: ReceiptLine[] = [];
   if (cutlery) extras.push(line(`TALHER: ${cutlery}`, { bold: true }));
   if (notes.adapter) extras.push(line("** ADAPTADOR DE HASHI: SIM **", { bold: true, reverse: true }));
-  if (notes.obs) wrapText(`OBS: ${notes.obs}`, LINE_WIDTH).forEach((text) => extras.push(line(text, { bold: true })));
-  if (extras.length > 0) lines.push(...extras, divider());
+  if (notes.obs) wrapText(`OBS: ${notes.obs}`, width).forEach((text) => extras.push(line(text, { bold: true })));
+  if (extras.length > 0) lines.push(...extras, divider(width));
 
   // Itens.
-  lines.push(...leftRight("QTD  PRODUTOS", "VALOR", { bold: true }));
+  lines.push(...leftRight("QTD  PRODUTOS", "VALOR", { bold: true }, width));
   order.items.forEach((item) => {
     const label = `${item.quantity}X ${item.name}`;
-    if (item.parentId) lines.push(...leftRight(`  + ${label}`, money(item.lineTotal)));
-    else lines.push(...productRows(label, money(item.lineTotal)));
+    if (item.parentId) lines.push(...leftRight(`  + ${label}`, money(item.lineTotal), {}, width));
+    else lines.push(...productRows(label, money(item.lineTotal), style));
   });
-  lines.push(divider());
+  lines.push(divider(width));
 
   // Totais e pagamento.
   const productCount = order.items.filter((item) => !item.parentId).reduce((sum, item) => sum + item.quantity, 0);
   const fee = order.deliveryFee ?? 0;
-  lines.push(...leftRight(`PRODUTOS (${productCount})`, money(order.total - fee)));
-  if (delivery) lines.push(...leftRight("ENTREGA", money(fee)));
-  lines.push(...leftRight("TOTAL", money(order.total), { w: 2, h: 2, bold: true }));
+  lines.push(...leftRight(`PRODUTOS (${productCount})`, money(order.total - fee), {}, width));
+  if (delivery) lines.push(...leftRight("ENTREGA", money(fee), {}, width));
+  lines.push(...leftRight("TOTAL", money(order.total), { w: 2, h: 2, bold: true }, width));
   if (order.paymentMethod) lines.push(line(`PAGAMENTO: ${PAYMENT_LABELS[order.paymentMethod] ?? order.paymentMethod}`, { bold: true }));
   return lines;
 }
 
 /** Prévia em texto (pra conferir o desenho do recibo sem gastar papel): fundo preto vira [ ], letra grande aparece com <w x h>. */
-export function receiptPreviewText(lines: ReceiptLine[]): string {
+export function receiptPreviewText(lines: ReceiptLine[], width = LINE_WIDTH): string {
   return lines
     .map((l) => {
       const text = l.parts.map((part) => (part.reverse ? `[${part.text}]` : part.text)).join("");
       const visible = l.parts.reduce((sum, part) => sum + part.text.length, 0);
-      const cols = columnsOf(l);
+      const cols = columnsOf(l, width);
       const indent = l.align === "center" ? Math.max(0, Math.floor((cols - visible) / 2)) : l.align === "right" ? Math.max(0, cols - visible) : 0;
       const tag = l.w > 1 || l.h > 1 ? `  <${l.w}x${l.h}>` : "";
       return " ".repeat(indent) + text + tag;
