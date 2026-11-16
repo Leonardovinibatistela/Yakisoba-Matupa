@@ -327,7 +327,8 @@ export function loadReceiptFooter(): Promise<Uint8Array | null> {
   footerPromise ??= (async () => {
     try {
       if (typeof fetch !== "function" || typeof createImageBitmap !== "function" || typeof document === "undefined") return null;
-      const response = await fetch(RECEIPT_FOOTER_URL, typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? { signal: AbortSignal.timeout(4000) } : undefined);
+      // cache: "no-cache" = pergunta ao servidor se a imagem mudou (resposta curta quando não mudou). Sem isso o navegador podia reaproveitar por minutos a imagem antiga depois de uma troca.
+      const response = await fetch(RECEIPT_FOOTER_URL, { cache: "no-cache", ...(typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? { signal: AbortSignal.timeout(4000) } : {}) });
       if (!response.ok) return null;
       const bitmap = await createImageBitmap(await response.blob());
       const canvas = document.createElement("canvas");
