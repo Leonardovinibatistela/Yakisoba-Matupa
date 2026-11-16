@@ -72,9 +72,10 @@ const KITCHEN_TAB_FOR_STAFF = true;
 // O botão "❌ Deletar de vez" (embaixo de "Restaurar no site", em item já excluído do site) apaga o item também da lista do painel e não tem
 // desfazer. Por enquanto só aparece pra quem cuida do sistema; só libere pra equipe da loja (true) depois do OK do desenvolvedor.
 const ITEM_DELETE_FOR_STAFF = false;
-// O botão "🔌 Conectar impressora USB" (impressora térmica de 80mm no cabo, ex.: POS80) é novo e ainda não foi testado com a impressora de
-// verdade: por enquanto só aparece pra quem cuida do sistema; só libere pra equipe da loja (true) depois do teste e do OK do desenvolvedor.
-const PRINTER_USB_FOR_STAFF = false;
+// O botão "🔌 Conectar impressora USB" (impressora térmica de 80mm no cabo, ex.: POS80) foi testado com a impressora de verdade e está liberado
+// pra equipe da loja (true), com o OK do desenvolvedor (16/11). Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
+// No Windows, cada computador que vai usar a impressora USB precisa ter o driver dela trocado pra WinUSB (programa Zadig), uma única vez.
+const PRINTER_USB_FOR_STAFF = true;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
