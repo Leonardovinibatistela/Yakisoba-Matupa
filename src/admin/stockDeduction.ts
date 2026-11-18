@@ -1,6 +1,7 @@
 import type { OrderLineItem } from "../orders";
 import type { Recipes } from "./recipes";
 import { resolveRecipeItemId } from "./recipeIds";
+import { isCheckoutExtraId } from "../checkoutExtras";
 import { collection, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -15,6 +16,7 @@ export function computeIngredientUsage(items: OrderLineItem[], recipes: Recipes)
   const missingItemIds: string[] = [];
   items.forEach((item) => {
     const recipeItemId = resolveRecipeItemId(item.id);
+    if (isCheckoutExtraId(recipeItemId)) return; // adicional do fechamento (hashi, tarê...): sem ficha técnica de propósito, não deixa o custo "parcial"
     const recipe = recipes[recipeItemId];
     if (!recipe || recipe.length === 0) { missingItemIds.push(recipeItemId); return; }
     consumptions.push({ itemId: recipeItemId, consumption: recipe.map(({ ingredientId, quantity }) => ({ ingredientId, quantity: quantity * item.quantity })) });

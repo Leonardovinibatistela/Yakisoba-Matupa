@@ -4,6 +4,7 @@
 // O printer.ts transforma estas linhas em comandos ESC/POS.
 import type { OrderRecord } from "./adminData";
 import { ESTIMATED_MINUTES } from "../estimatedTime";
+import { isCheckoutExtraId } from "../checkoutExtras";
 
 /** Colunas de texto numa impressora térmica de 58mm, fonte padrão (letra maior ocupa mais colunas por caractere). */
 export const LINE_WIDTH = 32;
@@ -175,13 +176,13 @@ export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<Rece
   lines.push(...leftRight("QTD  PRODUTOS", "VALOR", { bold: true }, width));
   order.items.forEach((item) => {
     const label = `${item.quantity}X ${item.name}`;
-    if (item.parentId) lines.push(...leftRight(`  + ${label}`, money(item.lineTotal), {}, width));
+    if (item.parentId || isCheckoutExtraId(item.id)) lines.push(...leftRight(`  + ${label}`, money(item.lineTotal), {}, width));
     else lines.push(...productRows(label, money(item.lineTotal), style));
   });
   lines.push(divider(width));
 
   // Totais e pagamento.
-  const productCount = order.items.filter((item) => !item.parentId).reduce((sum, item) => sum + item.quantity, 0);
+  const productCount = order.items.filter((item) => !item.parentId && !isCheckoutExtraId(item.id)).reduce((sum, item) => sum + item.quantity, 0);
   const fee = order.deliveryFee ?? 0;
   lines.push(...leftRight(`PRODUTOS (${productCount})`, money(order.total - fee), {}, width));
   if (delivery) lines.push(...leftRight("ENTREGA", money(fee), {}, width));

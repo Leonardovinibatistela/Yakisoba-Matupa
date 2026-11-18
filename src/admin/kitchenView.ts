@@ -2,6 +2,7 @@
 // entregar os pedidos (cliente, telefone, endereço, forma de pagamento...), SEM nenhum valor em R$ (nem preço, nem total, nem taxa).
 import type { OrderRecord } from "./adminData";
 import { ESTIMATED_MINUTES, parseOrderNotes } from "./receiptLayout";
+import { isCheckoutExtraId } from "../checkoutExtras";
 
 /** Quantos minutos um pedido fica marcado como "chegou agora" (destaque na tela). */
 export const NEW_ARRIVAL_MINUTES = 10;
@@ -24,6 +25,8 @@ export type KitchenTicket = {
   dueAt: Date;
   kind: "entrega" | "retirada" | "outro";
   items: KitchenItem[];
+  /** Adicionais do fechamento do pedido (hashi, tarê, wassabi...): não são prato, aparecem em linha própria e ficam fora do "O que preparar". */
+  extras: { qty: number; name: string }[];
   /** "Hashi", "Garfo" ou "Sem talher"; null quando não se sabe (pedido antigo). */
   cutlery: string | null;
   adapter: boolean;
@@ -51,7 +54,7 @@ function ticketItems(order: OrderRecord): KitchenItem[] {
   const items: KitchenItem[] = [];
   const byParent = new Map<string, KitchenItem>();
   order.items.forEach((item) => {
-    if (!item.parentId) {
+    if (!item.parentId && !isCheckoutExtraId(item.id)) {
       const entry: KitchenItem = { qty: item.quantity, name: item.name, addons: [] };
       items.push(entry);
       byParent.set(item.id, entry);
@@ -65,6 +68,10 @@ function ticketItems(order: OrderRecord): KitchenItem[] {
     else items.push({ qty: item.quantity, name: item.name, addons: [] });
   });
   return items;
+}
+
+function ticketExtras(order: OrderRecord): { qty: number; name: string }[] {
+  return order.items.filter((item) => isCheckoutExtraId(item.id)).map((item) => ({ qty: item.quantity, name: item.name }));
 }
 
 function toTicket(order: OrderRecord, nowMs: number): KitchenTicket {
@@ -83,6 +90,7 @@ function toTicket(order: OrderRecord, nowMs: number): KitchenTicket {
     dueAt: new Date(arrivedMs + (kind === "outro" ? ESTIMATED_MINUTES.retirada : ESTIMATED_MINUTES[kind]) * 60000),
     kind,
     items: ticketItems(order),
+    extras: ticketExtras(order),
     cutlery,
     adapter: notes.adapter,
     obs: notes.obs,

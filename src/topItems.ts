@@ -4,6 +4,7 @@
 // (nenhum dado de cliente) num campo público; o site lê essa lista e mostra os itens que ainda estão à venda.
 
 import { baseItemId } from "./itemIds";
+import { isCheckoutExtraId } from "./checkoutExtras";
 
 export const TOP_WINDOW_DAYS = 30;
 /** Quantos ids o painel guarda (sobra de reserva: o site descarta o que estiver esgotado/excluído). */
@@ -31,7 +32,7 @@ export function rankTopItemIds(orders: RankableOrder[], options: { now: Date; ex
   for (const order of inWindow) {
     for (const line of order.items ?? []) {
       const { id, isAddon } = baseItemId(String(line.id ?? ""));
-      if (isAddon || !ID_FORMAT.test(id) || options.excludeIds?.has(id)) continue;
+      if (isAddon || !ID_FORMAT.test(id) || isCheckoutExtraId(id) || options.excludeIds?.has(id)) continue;
       const quantity = Number(line.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) continue;
       totals.set(id, (totals.get(id) ?? 0) + Math.min(quantity, TOP_MAX_LINE_QUANTITY));

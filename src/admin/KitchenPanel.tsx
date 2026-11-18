@@ -188,6 +188,7 @@ function TicketCard({ ticket, nowMs, busy, onReady }: { ticket: KitchenTicket; n
           </li>
         ))}
       </ul>
+      {ticket.extras.length > 0 && <p className="mt-2 text-base font-bold text-amber-200">🥢 Adicionais: {ticket.extras.map((extra) => `${extra.qty}x ${extra.name}`).join(" · ")}</p>}
 
       {(ticket.cutlery || ticket.adapter || ticket.obs) && (
         <div className="mt-3 space-y-1.5">

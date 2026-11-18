@@ -25,6 +25,9 @@ import type { ManualCloseInfo } from "../manualCloseRule";
 import { setDeliveryFeeConfig, subscribeDeliveryFeeConfig } from "../deliveryFee";
 import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
+import CheckoutExtrasPanel from "./CheckoutExtrasPanel";
+import { saveCheckoutExtras, subscribeCheckoutExtras } from "../checkoutExtrasStore";
+import type { CheckoutExtra } from "../checkoutExtras";
 import type { ManualOpenInfo } from "../manualOpenRule";
 import { describeSite, planCancelSkip, planSitePress, planSkipToday, type SiteWrites } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
@@ -560,6 +563,9 @@ function Dashboard({ user }: { user: User }) {
   // novo etc.) — somados aos itens "de fábrica" na hora de listar cada seção.
   const [customItems, setCustomItems] = useState<CustomMenuItem[]>([]);
   useEffect(() => subscribeCustomItems(setCustomItems), []);
+  // Adicionais do fechamento do pedido (hashi, tarê...): a equipe edita na aba Cardápio. null = ainda carregando.
+  const [checkoutExtras, setCheckoutExtras] = useState<CheckoutExtra[] | null>(null);
+  useEffect(() => subscribeCheckoutExtras(setCheckoutExtras), []);
 
   // "Mais pedidos" do site (regra em topItems.ts): este painel conta o que mais saiu nos últimos 30 dias e guarda SÓ a lista de ids
   // (nenhum dado de cliente) num campo público; o site lê e mostra. Roda em qualquer painel aberto, só grava quando a lista MUDA
@@ -1294,6 +1300,7 @@ function Dashboard({ user }: { user: User }) {
             </div>
           </div>
         </div>
+        <CheckoutExtrasPanel extras={checkoutExtras} onSave={saveCheckoutExtras} />
         <DeliveryFeePanel config={deliveryFeeConfig} onSave={setDeliveryFeeConfig} />
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>

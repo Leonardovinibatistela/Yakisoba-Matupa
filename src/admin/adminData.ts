@@ -1,3 +1,4 @@
+import { isCheckoutExtraId } from "../checkoutExtras";
 import { collection, deleteDoc, doc, getDocs, getDocsFromServer, onSnapshot, query, QuerySnapshot, Timestamp, where } from "firebase/firestore";
 import { db } from "../firebase";
 import type { OrderLineItem } from "../orders";
@@ -114,6 +115,7 @@ export function bestSellers(orders: OrderRecord[], limit: number) {
   orders.forEach((order) => order.items.forEach((item) => {
     if (DRINK_ITEM_IDS.has(item.id)) return;
     if (item.id.includes("::")) return; // acompanhamento (brócolis, repolho...) não é prato: não entra no ranking
+    if (isCheckoutExtraId(item.id)) return; // adicional do fechamento (hashi, tarê...) também não
     quantityByItem.set(item.name, (quantityByItem.get(item.name) ?? 0) + item.quantity);
   }));
   return Array.from(quantityByItem.entries())
