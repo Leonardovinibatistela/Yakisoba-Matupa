@@ -22,7 +22,7 @@ import SectionNav from "./SectionNav";
 import { chipLabel } from "./sectionNavLogic";
 import { buildAddToCart, msSinceLoad, track, trackOnce } from "./analytics";
 import { stripThumbUrl } from "./imageThumb";
-import { checkoutExtraItem, isCheckoutExtraId, type CheckoutExtra } from "./checkoutExtras";
+import { checkoutExtraItem, describeExtraRule, extraLineTotal, isCheckoutExtraId, type CheckoutExtra } from "./checkoutExtras";
 import { subscribeCheckoutExtras } from "./checkoutExtrasStore";
 import { pickVisibleTop } from "./topItems";
 import { subscribeTopItems } from "./topItemsStore";
@@ -37,7 +37,7 @@ const allItemsById = new Map(allItems.map((item) => [item.id, item]));
 // Acompanhamento vira uma linha de carrinho PRÓPRIA, com id composto
 // "<item pai>::<acompanhamento>" — assim "Couve flor" pedida junto do Frango
 // e "Couve flor" pedida junto do Porco nunca se misturam no carrinho.
-type CartLine = MenuItem & { parentId?: string };
+type CartLine = MenuItem & { parentId?: string; /** Só nos adicionais do fechamento: quantos dos primeiros são grátis. */ freeQuantity?: number };
 const ADDON_SEPARATOR = "::";
 const addonCartId = (parentId: string, addonId: string) => `${parentId}${ADDON_SEPARATOR}${addonId}`;
 const parseAddonCartId = (id: string): { parentId: string; addonId: string } | null => {
@@ -124,7 +124,7 @@ function MenuVariantRow({ items, quantities, setQuantity, soldOutIds, priceOverr
 }
 const resolveCartLine = (id: string, itemsById: Map<string, MenuItem>, priceOverrides: Record<string, number>, photoOverrides: Record<string, string>, nameOverrides: Record<string, string>, extras: readonly CheckoutExtra[]): CartLine | null => {
   const extra = checkoutExtraItem(id, extras);
-  if (extra) return { ...applyOverrides(extra, priceOverrides, photoOverrides, nameOverrides), id };
+  if (extra) return { ...applyOverrides(extra, priceOverrides, photoOverrides, nameOverrides), id, freeQuantity: extra.freeQuantity };
   const parsed = parseAddonCartId(id);
   if (parsed) {
     const addon = itemsById.get(parsed.addonId);
@@ -134,6 +134,10 @@ const resolveCartLine = (id: string, itemsById: Map<string, MenuItem>, priceOver
   const direct = itemsById.get(baseId);
   return direct ? { ...applyOverrides(direct, priceOverrides, photoOverrides, nameOverrides), id } : null;
 };
+/** Quanto custa a linha: preço x quantidade; nos adicionais do fechamento, os primeiros (freeQuantity) são grátis. */
+const lineTotalOf = (line: CartLine, quantity: number): number => (line.freeQuantity ? extraLineTotal(line.price, line.freeQuantity, quantity) : line.price * quantity);
+/** Valor pro texto do WhatsApp: "grátis" quando é zero (adicional grátis). */
+const moneyOrFree = (value: number): string => (value === 0 ? "grátis" : formatTotal(value));
 /** Adicional (hashi, tarê...) sozinho não é pedido: sem nenhum prato no carrinho, os adicionais não contam. */
 const withoutOrphanExtras = (lines: CartLine[]): CartLine[] => (lines.some((line) => !isCheckoutExtraId(line.id)) ? lines : []);
 /** Agrupa uma lista de linhas do carrinho: cada item "pai" com seus acompanhamentos logo abaixo, e os que ficaram sem pai (caso raro) por último. */
@@ -233,7 +237,7 @@ function DeliveryLocationBlock({ compact }: { compact: boolean }) {
 
 function QuantityControl({ quantity, onChange, label, dark = false, small = false }: { quantity: number; onChange: (next: number) => void; label: string; dark?: boolean; small?: boolean }) { return <div className={`flex ${small ? "h-8" : "h-10"} items-center rounded-full border ${dark ? "border-white/10 bg-white/[0.055]" : "border-[#1a1513]/15 bg-white"}`} aria-label={`Quantidade de ${label}`}><button type="button" onClick={() => onChange(Math.max(0, quantity - 1))} aria-label={`Remover uma unidade de ${label}`} className={`grid h-full ${small ? "w-9" : "w-10"} place-items-center transition hover:text-[#ff6b32] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff6b32] ${dark ? "text-white/70" : "text-[#1a1513]/70"}`}><MinusIcon className="h-3.5 w-3.5" /></button><span className={`w-5 text-center text-sm font-bold ${dark ? "text-white" : "text-[#1a1513]"}`}>{quantity}</span><button type="button" onClick={() => onChange(quantity + 1)} aria-label={`Adicionar uma unidade de ${label}`} className={`grid h-full ${small ? "w-9" : "w-10"} place-items-center transition hover:text-[#ff6b32] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff6b32] ${dark ? "text-white/70" : "text-[#1a1513]/70"}`}><PlusIcon className="h-3.5 w-3.5" /></button></div>; }
 
-/** Adicionais cobrados à parte (hashi, shoyu, tarê...), só letras: lista curta no fechamento do pedido, com quantidade. A lista é a que a equipe edita no painel. */
+/** Adicionais do fechamento (hashi, shoyu, tarê...), só letras: o primeiro de cada um é grátis e do seguinte em diante paga (a regra e a lista são as que a equipe edita no painel). */
 function ExtrasPicker({ quantities, onQuantityChange, compact }: { quantities: Record<string, number>; onQuantityChange: (id: string, next: number) => void; compact?: boolean }) {
   const extras = useContext(CheckoutExtrasContext);
   const visible = (extras ?? []).filter((extra) => !extra.hidden);
@@ -241,10 +245,17 @@ function ExtrasPicker({ quantities, onQuantityChange, compact }: { quantities: R
   return <div>
     <p className={`text-xs font-bold uppercase tracking-[.14em] ${compact ? "text-white/55" : "text-[#8a7c73]"}`}>Adicionais</p>
     <ul className={`mt-1 divide-y ${compact ? "divide-white/10" : "divide-[#1d1714]/10"}`}>
-      {visible.map((extra) => <li key={extra.id} className="flex items-center justify-between gap-3 py-2">
-        <p className={`min-w-0 text-sm font-semibold leading-snug ${compact ? "text-white" : "text-[#2b211d]"}`}>{extra.name} <span className={`font-display text-xs font-bold ${compact ? "text-[#ff8b60]" : "text-[#d84b19]"}`}>{formatTotal(extra.price)}</span></p>
-        <QuantityControl quantity={quantities[extra.id] ?? 0} onChange={(next) => onQuantityChange(extra.id, next)} label={extra.name} dark={compact} small />
-      </li>)}
+      {visible.map((extra) => {
+        const quantity = quantities[extra.id] ?? 0;
+        const cost = extraLineTotal(extra.price, extra.freeQuantity ?? 0, quantity);
+        return <li key={extra.id} className="flex items-center justify-between gap-3 py-2">
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold leading-snug ${compact ? "text-white" : "text-[#2b211d]"}`}>{extra.name}</p>
+            <p className={`text-xs leading-snug ${compact ? "text-white/50" : "text-[#756861]"}`}>{describeExtraRule(extra)}{quantity > 0 && <span className={`ml-1.5 font-bold ${compact ? "text-[#ff8b60]" : "text-[#d84b19]"}`}>· {cost === 0 ? "grátis" : formatTotal(cost)}</span>}</p>
+          </div>
+          <QuantityControl quantity={quantity} onChange={(next) => onQuantityChange(extra.id, next)} label={extra.name} dark={compact} small />
+        </li>;
+      })}
     </ul>
   </div>;
 }
@@ -390,7 +401,7 @@ export default function App() {
   }, []);
   const cartItems = useMemo(() => withoutOrphanExtras(Object.keys(quantities).filter((id) => quantities[id] > 0).map((id) => resolveCartLine(id, itemsById, priceOverrides, photoOverrides, nameOverrides, checkoutExtras ?? [])).filter((line): line is CartLine => line !== null)), [quantities, itemsById, priceOverrides, photoOverrides, nameOverrides, checkoutExtras]);
   const totalQuantity = cartItems.reduce((total, item) => total + quantities[item.id], 0);
-  const subtotal = cartItems.reduce((total, item) => total + item.price * quantities[item.id], 0);
+  const subtotal = cartItems.reduce((total, item) => total + lineTotalOf(item, quantities[item.id]), 0);
   // Tirou todos os pratos: zera também os adicionais que sobraram (senão voltariam sozinhos quando o cliente escolhesse outro prato).
   useEffect(() => {
     if (cartItems.length === 0 && Object.keys(quantities).some((id) => isCheckoutExtraId(id) && quantities[id] > 0)) {
@@ -469,7 +480,7 @@ export default function App() {
     const { groups, orphanAddons } = groupCartLines(cartItems);
     const parentLabels = labelParentNames(groups);
     const itemLines = groups.flatMap(({ parent, addons }) => [
-      `${quantities[parent.id]}x ${parentLabels.get(parent.id) ?? parent.name} - ${formatTotal(parent.price * quantities[parent.id])}`,
+      `${quantities[parent.id]}x ${parentLabels.get(parent.id) ?? parent.name} - ${moneyOrFree(lineTotalOf(parent, quantities[parent.id]))}`,
       ...addons.map((addon) => `   + ${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`),
     ]).concat(orphanAddons.map((addon) => `${quantities[addon.id]}x ${addon.name} - ${formatTotal(addon.price * quantities[addon.id])}`));
     const buildMessage = () => [
@@ -500,7 +511,7 @@ export default function App() {
     const orderPayload: OrderPayload = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
-      items: cartItems.map((item) => ({ id: item.id, name: item.name, quantity: quantities[item.id], unitPrice: item.price, lineTotal: item.price * quantities[item.id], ...(item.parentId ? { parentId: item.parentId } : {}) })),
+      items: cartItems.map((item) => ({ id: item.id, name: item.name, quantity: quantities[item.id], unitPrice: item.price, lineTotal: lineTotalOf(item, quantities[item.id]), ...(item.parentId ? { parentId: item.parentId } : {}) })),
       subtotal,
       deliveryFee,
       total,

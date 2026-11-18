@@ -176,7 +176,7 @@ export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<Rece
   lines.push(...leftRight("QTD  PRODUTOS", "VALOR", { bold: true }, width));
   order.items.forEach((item) => {
     const label = `${item.quantity}X ${item.name}`;
-    if (item.parentId || isCheckoutExtraId(item.id)) lines.push(...leftRight(`  + ${label}`, money(item.lineTotal), {}, width));
+    if (item.parentId || isCheckoutExtraId(item.id)) lines.push(...leftRight(`  + ${label}`, isCheckoutExtraId(item.id) && item.lineTotal === 0 ? "GRATIS" : money(item.lineTotal), {}, width));
     else lines.push(...productRows(label, money(item.lineTotal), style));
   });
   lines.push(divider(width));
