@@ -76,6 +76,9 @@ const ITEM_DELETE_FOR_STAFF = false;
 // pra equipe da loja (true), com o OK do desenvolvedor (16/11). Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
 // No Windows, cada computador que vai usar a impressora USB precisa ter o driver dela trocado pra WinUSB (programa Zadig), uma única vez.
 const PRINTER_USB_FOR_STAFF = true;
+// O botão "🛵 Via do entregador" (mesmo recibo, com o endereço bem grande e sem o personagem; só em pedido de entrega) está liberado pra equipe da loja
+// (true), com o OK do desenvolvedor (18/11). Pra voltar a mostrar só pra quem cuida do sistema, troque pra false.
+const DRIVER_COPY_FOR_STAFF = true;
 const DEVELOPER_TAB_IDS: AdminTab[] = [
   "backup",
   "importar",
@@ -167,6 +170,7 @@ function Dashboard({ user }: { user: User }) {
   const kitchenAllowed = isDeveloper || KITCHEN_TAB_FOR_STAFF;
   const itemDeleteAllowed = isDeveloper || ITEM_DELETE_FOR_STAFF;
   const printerUsbAllowed = isDeveloper || PRINTER_USB_FOR_STAFF;
+  const driverCopyAllowed = isDeveloper || DRIVER_COPY_FOR_STAFF;
   const manualOrderAllowed = isDeveloper || MANUAL_ORDER_TAB_FOR_STAFF;
   // Aparelho travado na Cozinha: só aquela tela aparece (sem faturamento, financeiro, estoque…) até digitar a senha.
   const [kitchenLocked, setKitchenLocked] = useState(() => kitchenAllowed && isKitchenLocked());
@@ -274,6 +278,11 @@ function Dashboard({ user }: { user: User }) {
     if (!printerConn) { setSaveError("Conecta a impressora primeiro (botão \"Conectar impressora\" aqui em cima)."); return; }
     setPrintingOrderId(order.id);
     printOrderReceipt(printerConn, order).catch((error) => setSaveError(`Não foi possível imprimir o Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setPrintingOrderId(null));
+  };
+  const handlePrintDriverCopy = (order: OrderRecord) => {
+    if (!printerConn) { setSaveError("Conecta a impressora primeiro (botão \"Conectar impressora\" aqui em cima)."); return; }
+    setPrintingOrderId(order.id);
+    printOrderReceipt(printerConn, order, { driverCopy: true }).catch((error) => setSaveError(`Não foi possível imprimir a via do entregador do Pedido #${order.orderNumber}.\n\nDetalhe do erro: ${error?.message ?? error}`)).finally(() => setPrintingOrderId(null));
   };
   const handleToggleAutoPrint = () => {
     setAutoPrint((current) => {
@@ -1133,15 +1142,18 @@ function Dashboard({ user }: { user: User }) {
                       const isSuspect = duplicateSuspects.has(order.id);
                       return (
                         <div key={order.id} className={`rounded-lg border p-3 ${isSuspect ? "border-amber-400/50 bg-amber-400/[0.06]" : "border-white/10 bg-[#171211]"}`}>
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className={`flex items-center gap-2 font-bold text-white ${isOrderListFullscreen ? "text-lg" : "text-sm"}`}>
                               Pedido #{order.orderNumber}
                               {isSuspect && <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">⚠️ Possível duplicado</span>}
                             </span>
-                            <div className="flex shrink-0 items-center gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               <span className={`text-white/45 ${isOrderListFullscreen ? "text-sm" : "text-xs"}`}>{order.createdAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                               {printerConn && <button type="button" onClick={() => handlePrintOrder(order)} disabled={printingOrderId === order.id} aria-label={`Imprimir Pedido #${order.orderNumber}`} className="rounded-full border border-white/15 px-2 py-1 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
                                 {printingOrderId === order.id ? "Imprimindo…" : "🖨️ Imprimir"}
+                              </button>}
+                              {printerConn && driverCopyAllowed && order.deliveryType === "entrega" && <button type="button" onClick={() => handlePrintDriverCopy(order)} disabled={printingOrderId === order.id} aria-label={`Imprimir via do entregador do Pedido #${order.orderNumber}`} className="rounded-full border border-white/15 px-2 py-1 text-[10px] font-bold text-white/70 transition hover:border-white/35 hover:text-white disabled:cursor-wait disabled:opacity-50">
+                                {printingOrderId === order.id ? "Imprimindo…" : "🛵 Via do entregador"}
                               </button>}
                               <button type="button" onClick={() => handleDeleteOrder(order)} disabled={deletingOrderId === order.id} aria-label={`Apagar Pedido #${order.orderNumber}`} className="rounded-full border border-red-400/30 px-2 py-1 text-[10px] font-bold text-red-300 transition hover:border-red-400/60 hover:bg-red-400/10 disabled:cursor-wait disabled:opacity-50">
                                 {deletingOrderId === order.id ? "Apagando…" : "🗑 Apagar"}

@@ -123,9 +123,10 @@ function hangingLines(prefix: string, text: string, width = LINE_WIDTH): string[
  * as barras do E/L, com a letra grande os traços brancos ficam grossos e legíveis;
  * "tall" = item em negrito e letra mais alta, sem tarja.
  */
-export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "bigband" | "tall"; obsTall: boolean };
+export type ReceiptStyle = { width: number; reverseBold: boolean; itemStyle: "band" | "bigband" | "tall"; obsTall: boolean; driverCopy: boolean };
 // obsTall: a observação do pedido sai com o dobro da altura, sem negrito (a equipe precisa bater o olho e ver o que foi pedido de diferente).
-export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band", obsTall: false };
+// driverCopy: "via do entregador" = o mesmo recibo, com "VIA DO ENTREGADOR" no topo e o endereço (END.) bem grande, no tamanho do nome do item.
+export const DEFAULT_RECEIPT_STYLE: ReceiptStyle = { width: LINE_WIDTH, reverseBold: true, itemStyle: "band", obsTall: false, driverCopy: false };
 
 /** style.width = colunas de texto (32 no 58mm, 48 no 80mm); style.itemStyle = como o item aparece (tarja preta ou negrito alto). */
 export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<ReceiptStyle> = {}): ReceiptLine[] {
@@ -139,6 +140,7 @@ export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<Rece
 
   // Cabeçalho: ENTREGAR / RETIRAR gigante (o entregador e o balcão enxergam de longe) e dados da loja.
   if (delivery || pickup) lines.push(line(delivery ? "ENTREGAR" : "RETIRAR", { align: "center", w: 3, h: 2, bold: true }), blank());
+  if (style.driverCopy) lines.push(line("VIA DO ENTREGADOR", { align: "center", h: 2, bold: true }), blank());
   lines.push(line(STORE_NAME, { align: "center", bold: true }), line(`FONE: ${STORE_PHONE}`, { align: "center" }), line(`CNPJ: ${STORE_CNPJ}`, { align: "center" }), divider(width));
 
   // Pedido, hora prevista, hora do pedido e quem fez.
@@ -154,7 +156,11 @@ export function buildReceiptLines(order: OrderRecord, styleOptions: Partial<Rece
     if (phone && phone !== "-") lines.push(line(`FONE: ${phone}`));
   }
   const address = (order.location ?? "").trim();
-  if (delivery && address) hangingLines("END.: ", address, width).forEach((text) => lines.push(line(text, { bold: true })));
+  if (delivery && address && style.driverCopy) {
+    // Via do entregador: o endereço no mesmo tamanho e estilo do nome do item (tarja preta com letra grande; no "tall", negrito alto).
+    const addressStyle: LineOptions = style.itemStyle === "tall" ? { bold: true, h: 2 } : { reverse: true, bold: style.itemStyle === "band" ? style.reverseBold : false, w: 2, h: 2 };
+    wrapText(`END.: ${address}`, Math.floor(width / (addressStyle.w ?? 1))).forEach((text) => lines.push(line(text, addressStyle)));
+  } else if (delivery && address) hangingLines("END.: ", address, width).forEach((text) => lines.push(line(text, { bold: true })));
   if (name || phone || (delivery && address)) lines.push(divider(width));
 
   // Talher / adaptador / observação.
