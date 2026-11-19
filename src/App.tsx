@@ -22,7 +22,7 @@ import SectionNav from "./SectionNav";
 import { chipLabel } from "./sectionNavLogic";
 import { buildAddToCart, msSinceLoad, track, trackOnce } from "./analytics";
 import { stripThumbUrl } from "./imageThumb";
-import { checkoutExtraItem, describeExtraRule, extraLineTotal, isCheckoutExtraId, type CheckoutExtra } from "./checkoutExtras";
+import { checkoutExtraItem, checkoutExtrasEnabledForVisitor, describeExtraRule, extraLineTotal, isCheckoutExtraId, type CheckoutExtra } from "./checkoutExtras";
 import { subscribeCheckoutExtras } from "./checkoutExtrasStore";
 import { pickVisibleTop } from "./topItems";
 import { subscribeTopItems } from "./topItemsStore";
@@ -317,8 +317,14 @@ export default function App() {
   const [topItemIds, setTopItemIds] = useState<string[]>([]);
   useEffect(() => subscribeTopItems(setTopItemIds), []);
   // Lista de adicionais do fechamento (a equipe edita no painel). null = ainda carregando: o bloco só aparece depois que chegar.
+  // Enquanto a chave CHECKOUT_EXTRAS_FOR_EVERYONE estiver desligada, só quem abriu o site com ?adicionais=1 recebe a lista (os outros ficam em null = sem o bloco).
   const [checkoutExtras, setCheckoutExtras] = useState<CheckoutExtra[] | null>(null);
-  useEffect(() => subscribeCheckoutExtras(setCheckoutExtras), []);
+  const [extrasEnabled] = useState(() => {
+    let storage: Storage | null = null;
+    try { storage = window.localStorage; } catch { storage = null; }
+    return checkoutExtrasEnabledForVisitor(window.location.search, storage);
+  });
+  useEffect(() => (extrasEnabled ? subscribeCheckoutExtras(setCheckoutExtras) : undefined), [extrasEnabled]);
   const todayDay = new Date().getDay(); // fora do useMemo: o App refaz a conta a cada 30s, então a faixa troca o combo à meia-noite mesmo com a página aberta
   const featuredCards = useMemo<FeaturedCard[]>(() => {
     const yakiIds = new Set<string>([...menuSections.filter((section) => yakiSectionIds.includes(section.id)).flatMap((section) => section.items.map((item) => item.id)), ...customItems.filter((item) => yakiSectionIds.includes(item.sectionId)).map((item) => item.id)]);

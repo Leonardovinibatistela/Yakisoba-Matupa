@@ -27,7 +27,7 @@ import type { DeliveryFeeConfig } from "../deliveryFeeRule";
 import DeliveryFeePanel from "./DeliveryFeePanel";
 import CheckoutExtrasPanel from "./CheckoutExtrasPanel";
 import { saveCheckoutExtras, subscribeCheckoutExtras } from "../checkoutExtrasStore";
-import type { CheckoutExtra } from "../checkoutExtras";
+import { CHECKOUT_EXTRAS_FOR_EVERYONE, type CheckoutExtra } from "../checkoutExtras";
 import type { ManualOpenInfo } from "../manualOpenRule";
 import { describeSite, planCancelSkip, planSitePress, planSkipToday, type SiteWrites } from "../siteControl";
 import { addDailyCombo, DEFAULT_DAILY_COMBOS, formatDaysLabel, removeDailyCombo, subscribeDailyCombos, updateDailyCombo, WEEKDAYS, type DailyCombo } from "../dailyCombos";
@@ -1300,7 +1300,7 @@ function Dashboard({ user }: { user: User }) {
             </div>
           </div>
         </div>
-        <CheckoutExtrasPanel extras={checkoutExtras} onSave={saveCheckoutExtras} />
+        {(isDeveloper || CHECKOUT_EXTRAS_FOR_EVERYONE) && <CheckoutExtrasPanel extras={checkoutExtras} onSave={saveCheckoutExtras} />}
         <DeliveryFeePanel config={deliveryFeeConfig} onSave={setDeliveryFeeConfig} />
         <div className="mt-10 rounded-2xl border border-white/10 bg-[#171211] p-6">
           <p className="text-xs font-bold uppercase tracking-[.18em] text-[#ff7c50]">Cardápio</p>

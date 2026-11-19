@@ -99,3 +99,30 @@ export function checkoutExtraItem(id: string, extras: readonly CheckoutExtra[]):
   const extra = extras.find((candidate) => candidate.id === id && !candidate.hidden);
   return extra ? { id: extra.id, name: extra.name, price: extra.price, priceLabel: priceLabel(extra.price), freeQuantity: extra.freeQuantity ?? 0 } : null;
 }
+
+/**
+ * Chave de liberação dos adicionais do fechamento.
+ * false (agora): só quem abre o site com ?adicionais=1 enxerga o bloco, e o editor do painel aparece só pro desenvolvedor.
+ * true: todo mundo (clientes no site e a equipe no painel).
+ */
+export const CHECKOUT_EXTRAS_FOR_EVERYONE = false;
+export const EXTRAS_TEST_STORAGE_KEY = "sooba-adicionais-teste";
+
+type TinyStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/**
+ * O visitante vê os adicionais? Com a chave desligada: ?adicionais=1 liga (e lembra neste aparelho), ?adicionais=0 desliga.
+ * Nunca quebra se o navegador bloquear o armazenamento (aí vale só o que veio no endereço).
+ */
+export function checkoutExtrasEnabledForVisitor(search: string, storage: TinyStorage | null, everyone: boolean = CHECKOUT_EXTRAS_FOR_EVERYONE): boolean {
+  if (everyone) return true;
+  let flag: string | null = null;
+  try { flag = new URLSearchParams(search).get("adicionais"); } catch { flag = null; }
+  try {
+    if (flag === "1") { storage?.setItem(EXTRAS_TEST_STORAGE_KEY, "1"); return true; }
+    if (flag === "0") { storage?.removeItem(EXTRAS_TEST_STORAGE_KEY); return false; }
+    return storage?.getItem(EXTRAS_TEST_STORAGE_KEY) === "1";
+  } catch {
+    return flag === "1";
+  }
+}
