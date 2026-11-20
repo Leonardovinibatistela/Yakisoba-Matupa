@@ -102,10 +102,10 @@ export function checkoutExtraItem(id: string, extras: readonly CheckoutExtra[]):
 
 /**
  * Chave de liberação dos adicionais do fechamento.
- * false (agora): só quem abre o site com ?adicionais=1 enxerga o bloco, e o editor do painel aparece só pro desenvolvedor.
- * true: todo mundo (clientes no site e a equipe no painel).
+ * true (agora): todo mundo (clientes no site veem o bloco e a equipe edita a lista no painel, aba Cardápio).
+ * false: só quem abre o site com ?adicionais=1 enxerga o bloco, e o editor do painel aparece só pro desenvolvedor (modo de teste).
  */
-export const CHECKOUT_EXTRAS_FOR_EVERYONE = false;
+export const CHECKOUT_EXTRAS_FOR_EVERYONE = true;
 export const EXTRAS_TEST_STORAGE_KEY = "sooba-adicionais-teste";
 
 type TinyStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;

@@ -317,7 +317,7 @@ export default function App() {
   const [topItemIds, setTopItemIds] = useState<string[]>([]);
   useEffect(() => subscribeTopItems(setTopItemIds), []);
   // Lista de adicionais do fechamento (a equipe edita no painel). null = ainda carregando: o bloco só aparece depois que chegar.
-  // Enquanto a chave CHECKOUT_EXTRAS_FOR_EVERYONE estiver desligada, só quem abriu o site com ?adicionais=1 recebe a lista (os outros ficam em null = sem o bloco).
+  // Com a chave CHECKOUT_EXTRAS_FOR_EVERYONE ligada todo mundo recebe a lista; desligada, só quem abriu o site com ?adicionais=1 (os outros ficam em null = sem o bloco).
   const [checkoutExtras, setCheckoutExtras] = useState<CheckoutExtra[] | null>(null);
   const [extrasEnabled] = useState(() => {
     let storage: Storage | null = null;
