@@ -1,7 +1,7 @@
 // Tempo estimado do pedido (só regra, sem tela nem Firebase — dá pra testar sozinho). É o MESMO número em três lugares:
 // o "PREVISTO PARA" do recibo, o "Previsto" da Cozinha e o aviso pro cliente no site (na hora de finalizar e dentro da
 // mensagem do pedido). Mudou o tempo? É só trocar aqui.
-export const ESTIMATED_MINUTES = { entrega: 50, retirada: 45 } as const;
+export const ESTIMATED_MINUTES = { entrega: 50, retirada: 50 } as const;
 
 /** Horário de Matupá (UTC-4, sem horário de verão) em "HH:MM", não importa o fuso do aparelho de quem pede. */
 const STORE_OFFSET_MS = 4 * 3600000;
@@ -15,12 +15,12 @@ export function estimatedReadyClock(deliveryType: "entrega" | "retirada", nowMs:
   return matupaClock(nowMs + ESTIMATED_MINUTES[deliveryType] * 60000);
 }
 
-/** Linha do pedido que o cliente manda no WhatsApp: "⏱️ Tempo estimado: 45 min (previsto por volta das 20:15)". */
+/** Linha do pedido que o cliente manda no WhatsApp: "⏱️ Tempo estimado: 50 min (previsto por volta das 20:20)". */
 export function estimatedTimeLine(deliveryType: "entrega" | "retirada", nowMs: number): string {
   return `⏱️ Tempo estimado: ${ESTIMATED_MINUTES[deliveryType]} min (previsto por volta das ${estimatedReadyClock(deliveryType, nowMs)})`;
 }
 
-/** Frase do aviso na tela depois que o pedido é confirmado: "⏱️ Previsão: 45 min (por volta das 20:15)". */
+/** Frase do aviso na tela depois que o pedido é confirmado: "⏱️ Previsão: 50 min (por volta das 20:20)". */
 export function estimatedTimeNotice(deliveryType: "entrega" | "retirada", nowMs: number): string {
   return `⏱️ Previsão: ${ESTIMATED_MINUTES[deliveryType]} min (por volta das ${estimatedReadyClock(deliveryType, nowMs)})`;
 }
