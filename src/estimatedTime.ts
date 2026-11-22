@@ -1,7 +1,7 @@
 // Tempo estimado do pedido (só regra, sem tela nem Firebase — dá pra testar sozinho). É o MESMO número em três lugares:
 // o "PREVISTO PARA" do recibo, o "Previsto" da Cozinha e o aviso pro cliente no site (na hora de finalizar e dentro da
 // mensagem do pedido). Mudou o tempo? É só trocar aqui.
-export const ESTIMATED_MINUTES = { entrega: 45, retirada: 45 } as const;
+export const ESTIMATED_MINUTES = { entrega: 50, retirada: 45 } as const;
 
 /** Horário de Matupá (UTC-4, sem horário de verão) em "HH:MM", não importa o fuso do aparelho de quem pede. */
 const STORE_OFFSET_MS = 4 * 3600000;
